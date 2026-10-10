@@ -1,11 +1,10 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
-import { Spinner } from './components/ui'
+import { Button, ErrorBox, Spinner } from './components/ui'
 import { useAuth } from './lib/auth'
 import Alerts from './pages/Alerts'
 import Dashboard from './pages/Dashboard'
 import History from './pages/History'
-import Login from './pages/Login'
 import Performance from './pages/Performance'
 import PlayerDetail from './pages/PlayerDetail'
 import Prices from './pages/Prices'
@@ -15,9 +14,16 @@ import Transfers from './pages/Transfers'
 import Watchlist from './pages/Watchlist'
 
 export default function App() {
-  const { user, ready } = useAuth()
-  if (!ready) return <Spinner label="Starting FC 27 Market Engine…" />
-  if (!user) return <Login />
+  const { user, ready, error, retry } = useAuth()
+  if (!user && error)
+    return (
+      <main className="mx-auto mt-24 max-w-md space-y-3 px-4 text-center">
+        <h1 className="text-lg font-semibold">FC 27 Market Engine</h1>
+        <ErrorBox error={error} />
+        <Button variant="primary" onClick={retry}>Try again</Button>
+      </main>
+    )
+  if (!ready || !user) return <Spinner label="Setting up your trading desk…" />
   return (
     <Routes>
       <Route element={<Layout />}>

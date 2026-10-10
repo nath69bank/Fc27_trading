@@ -43,9 +43,10 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173 and click **Try the demo account**. That gives you a private,
-freshly seeded demo with 150,000 virtual coins. You can also sign in with `demo` /
-`demo-trader-27`, or register your own account.
+Open http://localhost:5173. There is no login screen: each browser automatically gets its
+own private, freshly seeded demo desk with 150,000 virtual coins, and returns to it on
+later visits. **Start over** (the ↺ icon in the header) throws it away and opens a fresh
+one. Guest desks nobody has opened for 90 days are deleted automatically.
 
 ### Single-process / production-style
 
@@ -82,8 +83,8 @@ bindings are needed.
    then shows a red "Temporary storage" warning, and data can disappear at any time.
 3. Deploy. Migrations run on cold start, serialised with a PostgreSQL advisory lock.
 
-On Vercel the shared `demo` login is **not** seeded by default (`SEED_DEMO_USER` defaults to
-false there); "Try the demo account" still creates private demo accounts. Locally,
+The site is open: every visitor gets their own private guest desk automatically, with no
+login. Set `ALLOW_DEMO_SIGNUP=false` to turn that off. Locally,
 `vercel dev` runs both services together.
 
 Configuration is via environment variables. See [`.env.example`](.env.example) for every
@@ -166,8 +167,10 @@ The expected sell price follows your **default selling strategy**: your target s
 * `GET /api/account/reconcile` re-derives balances from the journal and open transfers.
 * Changing the **starting coins** setting never rewrites history. Coins move only through
   trades or audited adjustments with a mandatory reason.
-* Auth: PBKDF2-SHA256 password hashes and opaque bearer tokens (only their SHA-256 is
-  stored). Every query is scoped to the signed-in user, and other users' records return 404.
+* Access: no login screen. Each browser gets a guest desk reached only through its own
+  bearer token (only the token's SHA-256 is stored; guests have no usable password). The
+  token is renewed while the visitor keeps coming back. The register/login API (PBKDF2-SHA256)
+  is still there for adding real accounts later. Every query is scoped to the signed-in user, and other users' records return 404.
 * Validation on both client and server (Pydantic with `extra="forbid"`, then the service rules).
 * Database errors return a safe 503 ("No changes were saved") without leaking internals.
 

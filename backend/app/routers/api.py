@@ -16,7 +16,7 @@ from ..config import get_settings, storage_is_persistent
 from ..deps import bearer_token, current_user, get_db
 from ..models import User
 from ..security import create_session, revoke_session, verify_password
-from ..seed import create_demo_account
+from ..seed import create_demo_account, prune_abandoned_guests
 from ..services import accounts, alerts, market_data, reports, scanner, trading, watchlist
 from ..services.common import ServiceError, get_settings_row
 
@@ -68,10 +68,12 @@ def login(body: schemas.Credentials, db: Session = DB) -> dict:
 
 @router.post("/auth/demo", status_code=201)
 def demo_signup(db: Session = DB) -> dict:
-    """Create a private, freshly seeded demo account so visitors never share state."""
+    """Open a private, freshly seeded guest desk. The site has no login screen: the browser
+    calls this on a visitor's first visit and keeps the token, so visitors never share state."""
     if not get_settings().allow_demo_signup:
-        raise ServiceError(403, "demo_disabled", "Demo accounts are disabled on this server.")
-    user, _ = create_demo_account(db)
+        raise ServiceError(403, "demo_disabled", "Guest access is disabled on this server.")
+    prune_abandoned_guests(db)
+    user = create_demo_account(db)
     return {"token": create_session(db, user), "user": _me(user)}
 
 

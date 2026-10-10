@@ -463,3 +463,47 @@ def test_concurrent_purchases_cannot_overspend(client, user):
     assert b["available_coins"] >= 0
     assert b["available_coins"] + b["invested_coins"] == 150_000
     assert client.get("/api/account/reconcile", headers=user).json()["balanced"] is True
+
+
+def test_guest_desk_has_no_usable_password_and_stays_private(client):
+    r = client.post("/api/auth/demo")
+    assert r.status_code == 201
+    name = r.json()["user"]["username"]
+    assert name.startswith("guest-") and r.json()["user"]["is_demo"] is True
+    h = {"Authorization": f"Bearer {r.json()['token']}"}
+    assert len(client.get("/api/watchlist", headers=h).json()) == 2
+    for pw in ("", "password123", "!guest"):
+        assert client.post("/api/auth/login", json={"username": name, "password": pw or "12345678"}).status_code in (401, 422)
+    other = demo(client)
+    assert client.get("/api/account/balance", headers=other).json()["available_coins"] == 150_000
+
+
+def test_abandoned_guests_are_pruned_but_active_ones_kept(client):
+    from datetime import timedelta
+
+    from sqlalchemy import func, select
+
+    from app.db import utcnow
+    from app.models import AuthSession, Transfer, User
+    from app.seed import prune_abandoned_guests
+
+    stale = client.post("/api/auth/demo").json()
+    sh = {"Authorization": f"Bearer {stale['token']}"}
+    item = client.get("/api/watchlist", headers=sh).json()[0]
+    t = buy(client, sh, item["card"]["id"], 25_200, target=32_000).json()
+    sell(client, sh, t["id"], 32_000)  # ledger rows must not block deletion
+    active = demo(client)
+
+    db = client.app.state.db.SessionLocal()
+    try:
+        u = db.get(User, stale["user"]["id"])
+        u.created_at = utcnow() - timedelta(days=60)
+        for s in db.scalars(select(AuthSession).where(AuthSession.user_id == u.id)):
+            s.expires_at = utcnow() - timedelta(days=1)
+        db.commit()
+        assert prune_abandoned_guests(db) == 1
+        assert db.scalar(select(func.count()).select_from(User).where(User.id == stale["user"]["id"])) == 0
+        assert db.scalar(select(func.count()).select_from(Transfer).where(Transfer.user_id == stale["user"]["id"])) == 0
+    finally:
+        db.close()
+    assert client.get("/api/auth/me", headers=active).status_code == 200

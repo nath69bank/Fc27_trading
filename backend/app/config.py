@@ -45,7 +45,7 @@ class Settings:
     # Allow anyone to spin up a private, freshly seeded demo account from the login page.
     allow_demo_signup: bool = field(default_factory=lambda: _bool("ALLOW_DEMO_SIGNUP", True))
     allow_registration: bool = field(default_factory=lambda: _bool("ALLOW_REGISTRATION", True))
-    session_ttl_hours: int = field(default_factory=lambda: int(os.getenv("SESSION_TTL_HOURS", "168")))
+    session_ttl_hours: int = field(default_factory=lambda: int(os.getenv("SESSION_TTL_HOURS", "2160")))
     password_hash_iterations: int = field(
         default_factory=lambda: int(os.getenv("PASSWORD_HASH_ITERATIONS", "390000"))
     )
@@ -69,7 +69,8 @@ class Settings:
 
 
 def storage_is_persistent(url: str) -> bool:
-    return not (url.startswith("sqlite") and "/tmp/" in url)
+    """False only for SQLite on Vercel, where the function filesystem is thrown away."""
+    return not (ON_VERCEL and url.startswith("sqlite"))
 
 
 @lru_cache

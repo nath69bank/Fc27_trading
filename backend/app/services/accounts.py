@@ -29,18 +29,24 @@ PLATFORMS = ("cross", "playstation", "xbox", "pc")
 SELL_STRATEGIES = ("target_price", "historical_high", "quick_flip")
 
 
+GUEST_PASSWORD_HASH = "!guest"  # matches no password: guests only ever sign in with their session token
+
+
 def create_user(
-    db: Session, username: str, password: str, *, is_demo: bool = False, starting_coins: int = 150_000
+    db: Session, username: str, password: str | None, *, is_demo: bool = False, starting_coins: int = 150_000
 ) -> User:
+    """Create a user with an opening balance. password=None creates a guest that cannot log in
+    with a password (and skips the deliberately slow hash)."""
     if not USERNAME_RE.match(username):
         raise ServiceError(422, "invalid_username", "Username must be 3-64 letters, numbers, dots, dashes or underscores.")
-    if len(password) < 8:
+    if password is not None and len(password) < 8:
         raise ServiceError(422, "weak_password", "Password must be at least 8 characters.")
     if starting_coins < 0:
         raise ServiceError(422, "invalid_amount", "Starting coins cannot be negative.")
     if db.scalar(select(func.count()).select_from(User).where(func.lower(User.username) == username.lower())):
         raise ServiceError(409, "username_taken", "That username is already registered.")
-    user = User(username=username, password_hash=hash_password(password), is_demo=is_demo)
+    pw_hash = hash_password(password) if password is not None else GUEST_PASSWORD_HASH
+    user = User(username=username, password_hash=pw_hash, is_demo=is_demo)
     try:
         db.add(user)
         db.flush()  # a concurrent registration of the same name fails here, not at commit

@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
-  Bell, BookOpen, CandlestickChart, ClipboardList, Gauge, LineChart, LogOut, Menu, Radar, Settings as SettingsIcon, Star, X,
+  Bell, BookOpen, CandlestickChart, ClipboardList, Gauge, LineChart, Menu, RotateCcw, Radar, Settings as SettingsIcon, Star, X,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { ago } from '../lib/format'
 import type { DataStatus } from '../lib/types'
-import { Badge, cx } from './ui'
+import { Badge, ConfirmDialog, cx } from './ui'
 
 export const REFRESH_EVENT = 'fc27:refresh'
 export const announceChange = () => window.dispatchEvent(new Event(REFRESH_EVENT))
@@ -57,7 +57,9 @@ export function DataModeIndicator({ status, compact }: { status: DataStatus | nu
 }
 
 export default function Layout() {
-  const { user, logout } = useAuth()
+  const { startOver } = useAuth()
+  const [confirmReset, setConfirmReset] = useState(false)
+  const [resetting, setResetting] = useState(false)
   const [status, setStatus] = useState<DataStatus | null>(null)
   const [unread, setUnread] = useState(0)
   const [open, setOpen] = useState(false)
@@ -133,13 +135,12 @@ export default function Layout() {
           <span className="hidden text-xs text-ink-muted sm:inline">{today}</span>
           <div className="order-last w-full sm:order-none sm:ml-auto sm:w-auto"><DataModeIndicator status={status} /></div>
           <div className="ml-auto flex items-center gap-1 sm:ml-0">
-            {user?.is_demo && <Badge className="border-gold/40 bg-gold/10 text-gold">DEMO ACCOUNT</Badge>}
+            <Badge className="border-gold/40 bg-gold/10 text-gold">DEMO DESK</Badge>
             <NavLink to="/alerts" className="relative rounded-lg p-2 text-ink-muted hover:bg-panel-2 hover:text-ink" aria-label={`Alerts, ${unread} unread`}>
               <Bell className="h-5 w-5" />
               {unread > 0 && <span className="num absolute -right-0.5 -top-0.5 min-w-[18px] rounded-full bg-loss px-1 text-center text-[10px] font-bold leading-[18px] text-white">{unread > 99 ? '99+' : unread}</span>}
             </NavLink>
-            <span className="hidden max-w-[10rem] truncate px-1 text-xs text-ink-muted md:inline">{user?.username}</span>
-            <button onClick={() => void logout()} className="rounded-lg p-2 text-ink-muted hover:bg-panel-2 hover:text-ink" aria-label="Sign out" title="Sign out"><LogOut className="h-4 w-4" /></button>
+            <button onClick={() => setConfirmReset(true)} className="rounded-lg p-2 text-ink-muted hover:bg-panel-2 hover:text-ink" aria-label="Start over with a fresh demo desk" title="Start over"><RotateCcw className="h-4 w-4" /></button>
           </div>
         </div>
       </header>
@@ -151,6 +152,21 @@ export default function Layout() {
         )}
         <Outlet />
       </main>
+      <ConfirmDialog
+        open={confirmReset}
+        danger
+        title="Start over?"
+        confirmLabel="Start over"
+        busy={resetting}
+        onClose={() => setConfirmReset(false)}
+        onConfirm={async () => {
+          setResetting(true)
+          await startOver()
+          setResetting(false)
+          setConfirmReset(false)
+        }}
+        message="This clears your watchlist, trades and coins in this browser and opens a fresh demo desk with 150,000 virtual coins. It cannot be undone."
+      />
     </div>
   )
 }

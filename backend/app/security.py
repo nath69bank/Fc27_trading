@@ -56,6 +56,11 @@ def user_for_token(db: Session, token: str) -> User | None:
     row = db.scalar(select(AuthSession).where(AuthSession.token_hash == _token_hash(token)))
     if row is None or row.expires_at < utcnow():
         return None
+    # Sliding expiry: a visitor who keeps coming back keeps their desk. Written at most daily.
+    ttl = timedelta(hours=get_settings().session_ttl_hours)
+    if row.expires_at - utcnow() < ttl - timedelta(days=1):
+        row.expires_at = utcnow() + ttl
+        db.commit()
     return db.get(User, row.user_id)
 
 
