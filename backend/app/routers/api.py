@@ -180,6 +180,11 @@ def market_cards(user: User = Auth, db: Session = DB) -> list[dict]:
     return [{**market_data.card_view(c), "stats": market_data.stats_for(db, user, c).to_dict()} for c in cards]
 
 
+@router.patch("/market/cards/{card_id}")
+def patch_card(card_id: str, body: schemas.CardUpdate, user: User = Auth, db: Session = DB) -> dict:
+    return market_data.update_card(db, user, card_id, body.model_dump(exclude_unset=True))
+
+
 @router.get("/market/prices")
 def market_prices(card_id: str, limit: int = Query(500, ge=1, le=5000), user: User = Auth, db: Session = DB) -> list[dict]:
     return market_data.list_prices(db, user, card_id, limit=limit)
@@ -193,7 +198,9 @@ def add_price(body: schemas.PriceCreate, user: User = Auth, db: Session = DB) ->
         card = market_data.get_or_create_card(db, user, body.player_name)
     else:
         raise ServiceError(422, "card_required", "Choose a card or enter a player name.")
-    obs = market_data.record_price(db, user, card, body.price, source="manual", observed_at=body.observed_at, platform=body.platform)
+    obs = market_data.record_price(
+        db, user, card, body.price, source="manual", observed_at=body.observed_at, platform=body.platform, seen_on=body.seen_on
+    )
     db.commit()
     trading.refresh_statuses(db, user)
     alerts.refresh_alerts(db, user)

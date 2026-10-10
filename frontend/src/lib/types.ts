@@ -10,8 +10,12 @@ export interface CardInfo {
   rating: number | null
   position: string | null
   image_url: string | null
+  futbin_url: string | null
+  futgg_url: string | null
   is_demo: boolean
 }
+
+export type SeenOn = 'ingame' | 'futbin' | 'futgg' | 'other'
 
 export interface Opportunity {
   player_name: string
@@ -51,6 +55,7 @@ export interface WatchItem {
   is_demo: boolean
   latest_price: number | null
   latest_source: Source | null
+  latest_seen_on: SeenOn | null
   last_price_update: string | null
   is_stale: boolean
   historical_low: number | null
@@ -72,12 +77,14 @@ export interface PricePoint {
   platform: string
   price: number
   source: Source
+  seen_on: SeenOn | null
   observed_at: string
 }
 
 export interface PriceStats {
   latest_price: number | null
   latest_source: Source | null
+  latest_seen_on: SeenOn | null
   latest_at: string | null
   historical_low: number | null
   historical_high: number | null

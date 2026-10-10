@@ -18,6 +18,7 @@ import csv
 import io
 import random
 import re
+from urllib.parse import urlparse
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
@@ -32,6 +33,8 @@ from ..models import Card, MarketPrice, User, WatchlistItem
 from .common import ServiceError, get_settings_row, iso, not_found
 
 SOURCES = ("manual", "csv", "sample", "simulated", "live")
+SEEN_ON = ("ingame", "futbin", "futgg", "other")  # where a manually entered price was read
+SITE_HOSTS = {"futbin": "futbin.com", "futgg": "fut.gg"}
 SIMULATED_SOURCES = ("sample", "simulated")
 HISTORY_WINDOW = timedelta(days=30)
 MIN_HISTORY_POINTS = 3
@@ -47,6 +50,20 @@ def card_key(player_name: str, version: str | None = None, rating: int | None = 
     return re.sub(r"[^a-z0-9]+", "-", "|".join(parts).lower()).strip("-")[:160]
 
 
+def clean_site_url(url: str | None, site: str) -> str | None:
+    """Accept only an https link to the named community site (or blank to clear it)."""
+    if url is None or not url.strip():
+        return None
+    url = url.strip()
+    host = SITE_HOSTS[site]
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not (hostname == host or hostname.endswith("." + host)):
+        label = "FUTBIN" if site == "futbin" else "FUT.GG"
+        raise ServiceError(422, "invalid_link", f"{label} link must be an https://{host} address.")
+    return url[:300]
+
+
 def get_or_create_card(
     db: Session,
     user: User,
@@ -56,6 +73,8 @@ def get_or_create_card(
     rating: int | None = None,
     position: str | None = None,
     image_url: str | None = None,
+    futbin_url: str | None = None,
+    futgg_url: str | None = None,
     is_demo: bool = False,
 ) -> Card:
     player_name = (player_name or "").strip()
@@ -65,6 +84,8 @@ def get_or_create_card(
         raise ServiceError(422, "invalid_rating", "Rating must be between 1 and 99.")
     if image_url and not re.match(r"^https?://", image_url):
         raise ServiceError(422, "invalid_image", "Image URL must start with http:// or https://.")
+    futbin_url = clean_site_url(futbin_url, "futbin")
+    futgg_url = clean_site_url(futgg_url, "futgg")
     key = card_key(player_name, version, rating)
     card = db.scalar(select(Card).where(Card.user_id == user.id, Card.card_key == key))
     if card is None:
@@ -76,6 +97,8 @@ def get_or_create_card(
             rating=rating,
             position=(position or None),
             image_url=(image_url or None),
+            futbin_url=futbin_url,
+            futgg_url=futgg_url,
             is_demo=is_demo,
         )
         db.add(card)
@@ -85,7 +108,29 @@ def get_or_create_card(
             card.position = position
         if image_url:
             card.image_url = image_url
+        if futbin_url:
+            card.futbin_url = futbin_url
+        if futgg_url:
+            card.futgg_url = futgg_url
     return card
+
+
+def update_card(db: Session, user: User, card_id: str, data: dict) -> dict:
+    """Edit a card's picture, position and community-site links. Blank clears a field."""
+    card = get_card(db, user, card_id)
+    if "image_url" in data:
+        url = (data["image_url"] or "").strip()
+        if url and not re.match(r"^https?://", url):
+            raise ServiceError(422, "invalid_image", "Image URL must start with http:// or https://.")
+        card.image_url = url[:500] or None
+    if "position" in data:
+        card.position = (data["position"] or "").strip().upper()[:8] or None
+    if "futbin_url" in data:
+        card.futbin_url = clean_site_url(data["futbin_url"], "futbin")
+    if "futgg_url" in data:
+        card.futgg_url = clean_site_url(data["futgg_url"], "futgg")
+    db.commit()
+    return card_view(card)
 
 
 def get_card(db: Session, user: User, card_id: str) -> Card:
@@ -104,6 +149,8 @@ def card_view(c: Card) -> dict:
         "rating": c.rating,
         "position": c.position,
         "image_url": c.image_url,
+        "futbin_url": c.futbin_url,
+        "futgg_url": c.futgg_url,
         "is_demo": c.is_demo,
     }
 
@@ -130,6 +177,7 @@ def round_to_market_step(price: int) -> int:
 class PriceStats:
     latest_price: int | None
     latest_source: str | None
+    latest_seen_on: str | None
     latest_at: datetime | None
     historical_low: int | None
     historical_high: int | None
@@ -142,6 +190,7 @@ class PriceStats:
         return {
             "latest_price": self.latest_price,
             "latest_source": self.latest_source,
+            "latest_seen_on": self.latest_seen_on,
             "latest_at": iso(self.latest_at),
             "historical_low": self.historical_low,
             "historical_high": self.historical_high,
@@ -176,6 +225,7 @@ def price_stats(db: Session, card: Card, *, platform: str, stale_after_hours: in
     return PriceStats(
         latest_price=latest.price if latest else None,
         latest_source=latest.source if latest else None,
+        latest_seen_on=latest.seen_on if latest else None,
         latest_at=latest.observed_at if latest else None,
         historical_low=min(history) if enough else None,
         historical_high=max(history) if enough else None,
@@ -209,9 +259,12 @@ def record_price(
     source: str,
     observed_at: datetime | None = None,
     platform: str | None = None,
+    seen_on: str | None = None,
 ) -> MarketPrice:
     if source not in SOURCES:
         raise ServiceError(422, "invalid_source", "Unknown data source.")
+    if seen_on is not None and (seen_on not in SEEN_ON or source != "manual"):
+        raise ServiceError(422, "invalid_seen_on", "'Seen on' applies to manual prices: ingame, futbin, futgg or other.")
     _validate_price(price)
     now = utcnow()
     observed_at = observed_at or now
@@ -224,6 +277,7 @@ def record_price(
         platform=platform or get_settings_row(db, user).platform,
         price=price,
         source=source,
+        seen_on=seen_on,
         observed_at=observed_at,
     )
     db.add(obs)
@@ -237,6 +291,7 @@ def price_view(p: MarketPrice) -> dict:
         "platform": p.platform,
         "price": p.price,
         "source": p.source,
+        "seen_on": p.seen_on,
         "observed_at": iso(p.observed_at),
     }
 

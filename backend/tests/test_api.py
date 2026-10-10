@@ -507,3 +507,29 @@ def test_abandoned_guests_are_pruned_but_active_ones_kept(client):
     finally:
         db.close()
     assert client.get("/api/auth/me", headers=active).status_code == 200
+
+
+def test_card_site_links_validated_and_editable(client, user):
+    r = client.post("/api/watchlist", headers=user, json={
+        "player_name": "Linked", "target_buy": 1000, "target_sell": 2000,
+        "futbin_url": "https://www.futbin.com/27/player/123/linked", "futgg_url": "https://www.fut.gg/players/123-linked/"})
+    assert r.status_code == 201, r.text
+    card = r.json()["card"]
+    assert card["futbin_url"].startswith("https://www.futbin.com/") and card["futgg_url"].startswith("https://www.fut.gg/")
+    for bad in ("http://www.futbin.com/x", "https://futbin.com.evil.example/x", "https://evil.example/futbin.com", "javascript:alert(1)"):
+        assert client.patch(f"/api/market/cards/{card['id']}", headers=user, json={"futbin_url": bad}).status_code == 422, bad
+    assert client.patch(f"/api/market/cards/{card['id']}", headers=user, json={"futgg_url": "https://www.futbin.com/x"}).status_code == 422
+    r = client.patch(f"/api/market/cards/{card['id']}", headers=user, json={"futbin_url": "", "image_url": "https://img.example/c.png", "position": "st"})
+    assert r.status_code == 200
+    assert r.json()["futbin_url"] is None and r.json()["image_url"] == "https://img.example/c.png" and r.json()["position"] == "ST"
+    other = signup(client)
+    assert client.patch(f"/api/market/cards/{card['id']}", headers=other, json={"position": "GK"}).status_code == 404
+
+
+def test_price_seen_on_is_recorded(client, user):
+    item = add_card_with_prices(client, user)
+    r = client.post("/api/market/prices", headers=user, json={"card_id": item["card"]["id"], "price": 10_300, "seen_on": "futbin"})
+    assert r.status_code == 201 and r.json()["seen_on"] == "futbin" and r.json()["source"] == "manual"
+    assert client.post("/api/market/prices", headers=user, json={"card_id": item["card"]["id"], "price": 1, "seen_on": "ebay"}).status_code == 422
+    w = client.get(f"/api/watchlist/{item['id']}", headers=user).json()
+    assert w["latest_seen_on"] == "futbin" and w["price_stats"]["latest_seen_on"] == "futbin"

@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pencil, ShoppingCart, Trash2, Zap } from 'lucide-react'
+import { ArrowLeft, Link2, Pencil, ShoppingCart, Trash2, Zap } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { useApi } from '../lib/useApi'
 import { coins, dateTime, parseCoins, pct, pnlClass, signedCoins } from '../lib/format'
-import type { Opportunity, WatchDetail } from '../lib/types'
+import type { Opportunity, SeenOn, WatchDetail } from '../lib/types'
+import { CardEditDialog, SEEN_ON_LABEL, SeenOnSelect, SiteLinks } from '../components/CardTools'
 import { Button, Card, CoinInput, ConfirmDialog, ErrorBox, Field, Metric, Notice, PageHeader, SourceBadge, Spinner, useToast } from '../components/ui'
 import { PriceHistoryChart } from '../components/charts'
 import OpportunityCard from '../components/OpportunityCard'
@@ -19,6 +20,8 @@ export default function PlayerDetail() {
   const { data, error, loading, reload } = useApi<WatchDetail>(`/watchlist/${id}`)
   useRefreshSignal(useCallback(() => void reload(), [reload]))
   const [price, setPrice] = useState('')
+  const [seenOn, setSeenOn] = useState<SeenOn>('ingame')
+  const [editLinks, setEditLinks] = useState(false)
   const [priceBusy, setPriceBusy] = useState(false)
   const [priceError, setPriceError] = useState<ApiError | null>(null)
   const [edit, setEdit] = useState(false)
@@ -37,10 +40,10 @@ export default function PlayerDetail() {
     setPriceBusy(true)
     setPriceError(null)
     try {
-      await api('/market/prices', { method: 'POST', json: { card_id: data!.card.id, price: p } })
+      await api('/market/prices', { method: 'POST', json: { card_id: data!.card.id, price: p, seen_on: seenOn } })
       setPrice('')
       setEvaluated(null)
-      toast('success', `Manual price ${coins(p)} recorded.`)
+      toast('success', `Manual price ${coins(p)} recorded (seen on ${SEEN_ON_LABEL[seenOn]}).`)
       announceChange()
     } catch (err) {
       setPriceError(err as ApiError)
@@ -81,6 +84,10 @@ export default function PlayerDetail() {
           </>
         }
       />
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <SiteLinks card={data.card} size="md" />
+        <Button size="sm" variant="ghost" onClick={() => setEditLinks(true)}><Link2 className="h-3.5 w-3.5" /> {data.card.futbin_url || data.card.futgg_url ? 'Edit links' : 'Save FUTBIN / FUT.GG pages'}</Button>
+      </div>
       {data.is_demo && <div className="mb-4"><Notice tone="demo">Demo record — this is not a real FC 27 card, and its prices are sample data.</Notice></div>}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Metric label="Latest price" value={coins(data.latest_price)} sub={<span className="inline-flex items-center gap-1"><SourceBadge source={data.latest_source} /> {dateTime(data.last_price_update)}</span>} />
@@ -95,7 +102,8 @@ export default function PlayerDetail() {
           </Card>
           <Card title="Observations">
             <form onSubmit={addPrice} className="mb-3 flex flex-wrap items-end gap-2">
-              <div className="w-48"><Field label="Add manual price">{(fid) => <CoinInput id={fid} value={price} onChange={setPrice} placeholder="e.g. 25,200" />}</Field></div>
+              <div className="w-40"><Field label="Add manual price">{(fid) => <CoinInput id={fid} value={price} onChange={setPrice} placeholder="e.g. 25,200" />}</Field></div>
+              <div className="w-40"><Field label="Seen on">{(fid) => <SeenOnSelect id={fid} value={seenOn} onChange={setSeenOn} />}</Field></div>
               <Button type="submit" variant="primary" loading={priceBusy} disabled={!parseCoins(price)}>Record price</Button>
             </form>
             <ErrorBox error={priceError} />
@@ -104,7 +112,7 @@ export default function PlayerDetail() {
                 <thead className="sticky top-0 bg-panel"><tr className="border-b border-line"><th className="th">Observed</th><th className="th text-right">Price</th><th className="th">Source</th><th className="th">Platform</th></tr></thead>
                 <tbody>
                   {[...data.price_history].reverse().map((p) => (
-                    <tr key={p.id} className="border-b border-line/60"><td className="td text-ink-muted">{dateTime(p.observed_at)}</td><td className="td num text-right">{coins(p.price)}</td><td className="td"><SourceBadge source={p.source} /></td><td className="td text-xs text-ink-muted">{p.platform}</td></tr>
+                    <tr key={p.id} className="border-b border-line/60"><td className="td text-ink-muted">{dateTime(p.observed_at)}</td><td className="td num text-right">{coins(p.price)}</td><td className="td"><SourceBadge source={p.source} />{p.seen_on && <span className="ml-1.5 text-[11px] text-ink-muted">via {SEEN_ON_LABEL[p.seen_on]}</span>}</td><td className="td text-xs text-ink-muted">{p.platform}</td></tr>
                   ))}
                 </tbody>
               </table>
@@ -122,6 +130,7 @@ export default function PlayerDetail() {
           {data.notes && <Card title="Notes"><p className="whitespace-pre-wrap text-sm text-ink-muted">{data.notes}</p></Card>}
         </div>
       </div>
+      <CardEditDialog card={editLinks ? data.card : null} onClose={() => setEditLinks(false)} onSaved={reload} />
       <WatchlistForm open={edit} item={data} onClose={() => setEdit(false)} onSaved={reload} />
       <ConfirmDialog open={confirmDelete} danger title="Remove from watchlist?" confirmLabel="Remove" onClose={() => setConfirmDelete(false)} onConfirm={remove}
         message="Price history and transfers for this card are kept." />

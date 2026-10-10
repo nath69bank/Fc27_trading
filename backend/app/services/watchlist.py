@@ -41,13 +41,17 @@ def add_to_watchlist(
     rating: int | None = None,
     position: str | None = None,
     image_url: str | None = None,
+    futbin_url: str | None = None,
+    futgg_url: str | None = None,
     notes: str = "",
     current_price: int | None = None,
+    current_price_seen_on: str | None = None,
     is_demo: bool = False,
 ) -> WatchlistItem:
     _validate_targets(target_buy, target_sell)
     card = get_or_create_card(
-        db, user, player_name, version=version, rating=rating, position=position, image_url=image_url, is_demo=is_demo
+        db, user, player_name, version=version, rating=rating, position=position, image_url=image_url,
+        futbin_url=futbin_url, futgg_url=futgg_url, is_demo=is_demo,
     )
     if db.scalar(select(WatchlistItem).where(WatchlistItem.user_id == user.id, WatchlistItem.card_id == card.id)):
         raise ServiceError(409, "already_watching", f"{card.player_name} is already on your watchlist.")
@@ -59,7 +63,7 @@ def add_to_watchlist(
     if current_price is not None:
         from .market_data import record_price
 
-        record_price(db, user, card, current_price, source="manual")
+        record_price(db, user, card, current_price, source="manual", seen_on=current_price_seen_on)
     try:
         db.commit()
     except IntegrityError as exc:
@@ -83,6 +87,12 @@ def update_item(db: Session, user: User, item_id: str, data: dict) -> dict:
         card.image_url = data["image_url"] or None
     if data.get("position") is not None:
         card.position = data["position"] or None
+    from .market_data import clean_site_url
+
+    if "futbin_url" in data:
+        card.futbin_url = clean_site_url(data["futbin_url"], "futbin")
+    if "futgg_url" in data:
+        card.futgg_url = clean_site_url(data["futgg_url"], "futgg")
     db.commit()
     return item_view(db, user, item)
 
@@ -120,6 +130,7 @@ def item_view(db: Session, user: User, item: WatchlistItem) -> dict:
         "is_demo": item.is_demo,
         "latest_price": price,
         "latest_source": stats.latest_source,
+        "latest_seen_on": stats.latest_seen_on,
         "last_price_update": iso(stats.latest_at),
         "is_stale": stats.is_stale,
         "historical_low": stats.historical_low,

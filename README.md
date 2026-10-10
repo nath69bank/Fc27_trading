@@ -17,6 +17,7 @@ and measures trading performance.
 |---|---|
 | **Dashboard** | Available / invested coins, portfolio value, realised profit, open transfers, trading ROI. Also opportunities, transfers near target, recent trades, P&L chart, alerts and a data-source indicator |
 | **Market Scanner** | `evaluate_opportunity()` on your watchlist or on prices you type in. Returns BUY / HOLD / SELL / WATCH / RISK with the reasoning behind it |
+| **Card Gallery** | Every tracked card as a tile with latest price, 30-day range and signal. Save each player's FUTBIN and FUT.GG pages for one-click access, and record prices with where you saw them |
 | **Watchlist** | `add_to_watchlist()`, edit, remove, search, sort, favourites, per-player detail page, evaluate on demand |
 | **Active Transfers** | `execute_purchase()` with review → confirm. Update estimates and targets, mark as listed, record (partial) sales, cancel, view details |
 | **Trade History** | `track_and_settle()` ledger: tax, net proceeds, realised profit, ROI. Search, sort, paginate, CSV export |
@@ -177,7 +178,7 @@ The expected sell price follows your **default selling strategy**: your target s
 ## Tests
 
 ```bash
-cd backend && pytest                       # 62 tests, SQLite
+cd backend && pytest                       # 66 tests, SQLite
 TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost/fc27_test pytest   # same suite on PostgreSQL
 ```
 

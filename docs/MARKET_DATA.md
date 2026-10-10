@@ -27,6 +27,26 @@ cards. Their price histories are generated so that the documented example works 
 (historical low 25,000, high 32,000, current 25,200 → BUY). They say nothing about any real
 player's price.
 
+## FUTBIN and FUT.GG
+
+FUTBIN and FUT.GG don't offer a public API for third-party apps. EA's FC Community
+API is limited to sites EA has approved, and works by signing in with an EA account on
+those sites. It isn't something this app can call. Scraping their pages would likely
+breach their terms and copy EA card artwork, so the app doesn't do it.
+
+What the app does instead:
+
+* **Links**: each card can store its FUTBIN and FUT.GG page (Card Gallery → ✎, or the
+  player page). Only `https://` addresses on `futbin.com` / `fut.gg` are accepted. Until a
+  page is saved, the button runs a search restricted to that site.
+* **Seen on**: manual prices record where you read them (in-game market, FUTBIN, FUT.GG,
+  other), shown as "via FUTBIN" etc. next to the price. They remain `manual` data: the app
+  has not verified them.
+* **Images**: a card image is a URL you provide. Use images you have the right to use.
+
+If you obtain licensed access to a price feed (from one of these sites or anyone else),
+connect it through the provider adapter below.
+
 ## How prices are used
 
 * **Historical low / high**: min / max of observations in the last **30 days** on your

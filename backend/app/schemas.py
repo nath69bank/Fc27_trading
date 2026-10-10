@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 Coins = Annotated[int, Field(gt=0, le=15_000_000)]
 Qty = Annotated[int, Field(gt=0, le=100)]
+SeenOn = Literal["ingame", "futbin", "futgg", "other"]
 Key = Annotated[str, Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")]
 
 
@@ -30,9 +31,12 @@ class WatchlistCreate(Body):
     rating: int | None = Field(default=None, ge=1, le=99)
     position: str | None = Field(default=None, max_length=8)
     image_url: str | None = Field(default=None, max_length=500)
+    futbin_url: str | None = Field(default=None, max_length=300)
+    futgg_url: str | None = Field(default=None, max_length=300)
     target_buy: Coins
     target_sell: Coins
     current_price: Coins | None = None
+    current_price_seen_on: SeenOn | None = None
     notes: str = Field(default="", max_length=1000)
 
 
@@ -43,6 +47,15 @@ class WatchlistUpdate(Body):
     notes: str | None = Field(default=None, max_length=1000)
     image_url: str | None = Field(default=None, max_length=500)
     position: str | None = Field(default=None, max_length=8)
+    futbin_url: str | None = Field(default=None, max_length=300)
+    futgg_url: str | None = Field(default=None, max_length=300)
+
+
+class CardUpdate(Body):
+    image_url: str | None = Field(default=None, max_length=500)
+    position: str | None = Field(default=None, max_length=8)
+    futbin_url: str | None = Field(default=None, max_length=300)
+    futgg_url: str | None = Field(default=None, max_length=300)
 
 
 class ManualEvaluation(Body):
@@ -64,6 +77,7 @@ class PriceCreate(Body):
     price: Coins
     observed_at: datetime | None = None
     platform: Literal["cross", "playstation", "xbox", "pc"] | None = None
+    seen_on: SeenOn | None = None
 
 
 class CsvImport(Body):

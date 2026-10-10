@@ -4,7 +4,8 @@ import { Pencil, Plus, Search, Star, Trash2, Zap } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { useApi } from '../lib/useApi'
 import { ago, coins, parseCoins, pct, pnlClass, signedCoins } from '../lib/format'
-import type { Opportunity, WatchItem } from '../lib/types'
+import type { Opportunity, SeenOn, WatchItem } from '../lib/types'
+import { SeenOnSelect } from '../components/CardTools'
 import {
   Badge, Button, Card, CoinInput, ConfirmDialog, EmptyState, ErrorBox, Field, Modal, PageHeader, PlayerChip, SignalBadge, SortHeader, SourceBadge, Spinner, useToast, cx,
 } from '../components/ui'
@@ -25,15 +26,16 @@ const ALERT_LABEL: Record<WatchItem['alert_status'], { text: string; cls: string
 export function WatchlistForm({ item, open, onClose, onSaved }: { item?: WatchItem | null; open: boolean; onClose: () => void; onSaved: () => void }) {
   const toast = useToast()
   const editing = Boolean(item)
-  const [f, setF] = useState({ name: '', version: '', rating: '', position: '', image: '', buy: '', sell: '', current: '', notes: '' })
+  const [f, setF] = useState({ name: '', version: '', rating: '', position: '', image: '', buy: '', sell: '', current: '', notes: '', futbin: '', futgg: '' })
+  const [seen, setSeen] = useState<SeenOn>('ingame')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<ApiError | null>(null)
   useEffect(() => {
     if (!open) return
     setError(null)
     setF(item
-      ? { name: item.card.player_name, version: item.card.version ?? '', rating: String(item.card.rating ?? ''), position: item.card.position ?? '', image: item.card.image_url ?? '', buy: String(item.target_buy), sell: String(item.target_sell), current: '', notes: item.notes }
-      : { name: '', version: '', rating: '', position: '', image: '', buy: '', sell: '', current: '', notes: '' })
+      ? { name: item.card.player_name, version: item.card.version ?? '', rating: String(item.card.rating ?? ''), position: item.card.position ?? '', image: item.card.image_url ?? '', buy: String(item.target_buy), sell: String(item.target_sell), current: '', notes: item.notes, futbin: item.card.futbin_url ?? '', futgg: item.card.futgg_url ?? '' }
+      : { name: '', version: '', rating: '', position: '', image: '', buy: '', sell: '', current: '', notes: '', futbin: '', futgg: '' })
   }, [open, item])
   const set = (k: keyof typeof f) => (v: string) => setF((s) => ({ ...s, [k]: v }))
   const buy = parseCoins(f.buy), sell = parseCoins(f.sell)
@@ -46,14 +48,15 @@ export function WatchlistForm({ item, open, onClose, onSaved }: { item?: WatchIt
     setError(null)
     try {
       if (editing && item) {
-        await api(`/watchlist/${item.id}`, { method: 'PATCH', json: { target_buy: buy, target_sell: sell, notes: f.notes, image_url: f.image, position: f.position } })
+        await api(`/watchlist/${item.id}`, { method: 'PATCH', json: { target_buy: buy, target_sell: sell, notes: f.notes, image_url: f.image, position: f.position, futbin_url: f.futbin, futgg_url: f.futgg } })
         toast('success', 'Watchlist entry updated.')
       } else {
         await api('/watchlist', {
           method: 'POST',
           json: {
             player_name: f.name, version: f.version || null, rating: f.rating ? parseInt(f.rating, 10) : null, position: f.position || null,
-            image_url: f.image || null, target_buy: buy, target_sell: sell, current_price: parseCoins(f.current) ?? undefined, notes: f.notes,
+            image_url: f.image || null, futbin_url: f.futbin || null, futgg_url: f.futgg || null, target_buy: buy, target_sell: sell,
+            current_price: parseCoins(f.current) ?? undefined, current_price_seen_on: parseCoins(f.current) ? seen : undefined, notes: f.notes,
           },
         })
         toast('success', `${f.name} added to your watchlist.`)
@@ -83,7 +86,16 @@ export function WatchlistForm({ item, open, onClose, onSaved }: { item?: WatchIt
           <Field label="Target buy">{(id) => <CoinInput id={id} value={f.buy} onChange={set('buy')} required />}</Field>
           <Field label="Target sell" error={clientError}>{(id) => <CoinInput id={id} value={f.sell} onChange={set('sell')} required />}</Field>
         </div>
-        {!editing && <Field label="Current market price (optional)" hint="Saved as a Manual price observation">{(id) => <CoinInput id={id} value={f.current} onChange={set('current')} />}</Field>}
+        {!editing && (
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Current price (optional)" hint="Saved as a Manual price">{(id) => <CoinInput id={id} value={f.current} onChange={set('current')} />}</Field>
+            <Field label="Seen on">{(id) => <SeenOnSelect id={id} value={seen} onChange={setSeen} />}</Field>
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="FUTBIN page (optional)">{(id) => <input id={id} className="input" type="url" placeholder="https://www.futbin.com/…" value={f.futbin} onChange={(e) => set('futbin')(e.target.value)} />}</Field>
+          <Field label="FUT.GG page (optional)">{(id) => <input id={id} className="input" type="url" placeholder="https://www.fut.gg/…" value={f.futgg} onChange={(e) => set('futgg')(e.target.value)} />}</Field>
+        </div>
         <Field label="Image URL (optional)">{(id) => <input id={id} className="input" type="url" value={f.image} onChange={(e) => set('image')(e.target.value)} placeholder="https://…" />}</Field>
         <Field label="Notes">{(id) => <textarea id={id} className="input h-16" value={f.notes} onChange={(e) => set('notes')(e.target.value)} maxLength={1000} />}</Field>
       </form>

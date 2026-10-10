@@ -127,6 +127,10 @@ class Card(Base):
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     position: Mapped[str | None] = mapped_column(String(8), nullable=True)
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # The player's pages on community price sites, pasted by the user. Links only: neither
+    # site offers a public API, and the app never fetches from them.
+    futbin_url: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    futgg_url: Mapped[str | None] = mapped_column(String(300), nullable=True)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
@@ -141,6 +145,8 @@ class MarketPrice(Base):
     price: Mapped[int] = mapped_column(BigInteger)
     # manual | csv | sample | simulated | live
     source: Mapped[str] = mapped_column(String(16))
+    # Where a manually entered price was read from: ingame | futbin | futgg | other
+    seen_on: Mapped[str | None] = mapped_column(String(16), nullable=True)
     observed_at: Mapped[datetime] = mapped_column(UTCDateTime)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 

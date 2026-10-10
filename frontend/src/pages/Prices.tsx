@@ -3,7 +3,8 @@ import { CandlestickChart, FlaskConical, RefreshCw, Trash2, Upload } from 'lucid
 import { api, ApiError } from '../lib/api'
 import { useApi } from '../lib/useApi'
 import { ago, coins, dateTime, parseCoins } from '../lib/format'
-import type { DataStatus, MarketCard, PricePoint } from '../lib/types'
+import type { DataStatus, MarketCard, PricePoint, SeenOn } from '../lib/types'
+import { SEEN_ON_LABEL, SeenOnSelect, SiteLinks } from '../components/CardTools'
 import { Button, Card, CoinInput, ConfirmDialog, EmptyState, ErrorBox, Field, Notice, PageHeader, SourceBadge, Spinner, useToast, cx } from '../components/ui'
 import { PriceHistoryChart } from '../components/charts'
 import { DataModeIndicator, announceChange, useRefreshSignal } from '../components/Layout'
@@ -22,7 +23,7 @@ export default function Prices() {
     if (!selected && cards.data?.length) setSelected(cards.data[0].id)
   }, [cards.data, selected])
 
-  const [manual, setManual] = useState({ name: '', price: '', when: '' })
+  const [manual, setManual] = useState({ name: '', price: '', when: '', seen: 'ingame' as SeenOn })
   const [manualBusy, setManualBusy] = useState(false)
   const [manualError, setManualError] = useState<ApiError | null>(null)
   const [csv, setCsv] = useState('')
@@ -44,10 +45,10 @@ export default function Prices() {
       const match = cards.data?.find((c) => c.player_name.toLowerCase() === manual.name.trim().toLowerCase())
       await api('/market/prices', {
         method: 'POST',
-        json: { ...(match ? { card_id: match.id } : { player_name: manual.name.trim() }), price: p, observed_at: manual.when ? new Date(manual.when).toISOString() : undefined },
+        json: { ...(match ? { card_id: match.id } : { player_name: manual.name.trim() }), price: p, seen_on: manual.seen, observed_at: manual.when ? new Date(manual.when).toISOString() : undefined },
       })
       toast('success', `Recorded ${coins(p)} for ${manual.name}.`)
-      setManual({ name: manual.name, price: '', when: '' })
+      setManual({ ...manual, price: '', when: '' })
       announceChange()
     } catch (err) {
       setManualError(err as ApiError)
@@ -156,6 +157,7 @@ export default function Prices() {
                     <div><p className="text-ink-muted">Freshness</p><p className={cx('text-sm', card.stats.is_stale ? 'text-warn' : 'text-ink')}>{card.stats.latest_at ? ago(card.stats.latest_at) : '—'}{card.stats.is_stale && ' · stale'}</p></div>
                   </div>
                 )}
+                {card && <div className="mb-3"><SiteLinks card={card} /></div>}
                 <PriceHistoryChart points={prices.data ?? []} />
                 <div className="-mx-4 mt-4 max-h-80 overflow-auto">
                   <table className="w-full">
@@ -165,7 +167,7 @@ export default function Prices() {
                         <tr key={p.id} className="border-b border-line/60">
                           <td className="td text-ink-muted">{dateTime(p.observed_at)}</td>
                           <td className="td num text-right">{coins(p.price)}</td>
-                          <td className="td"><SourceBadge source={p.source} /></td>
+                          <td className="td"><SourceBadge source={p.source} />{p.seen_on && <span className="ml-1.5 text-[11px] text-ink-muted">via {SEEN_ON_LABEL[p.seen_on]}</span>}</td>
                           <td className="td text-xs capitalize text-ink-muted">{p.platform}</td>
                           <td className="td text-right">{p.source !== 'live' && <Button size="sm" variant="ghost" onClick={() => setDeleting(p)} aria-label="Delete observation"><Trash2 className="h-3.5 w-3.5" /></Button>}</td>
                         </tr>
@@ -187,6 +189,7 @@ export default function Prices() {
                 <Field label="Price">{(id) => <CoinInput id={id} value={manual.price} onChange={(v) => setManual({ ...manual, price: v })} required />}</Field>
                 <Field label="Observed at" hint="Blank = now">{(id) => <input id={id} type="datetime-local" className="input" value={manual.when} onChange={(e) => setManual({ ...manual, when: e.target.value })} />}</Field>
               </div>
+              <Field label="Seen on">{(id) => <SeenOnSelect id={id} value={manual.seen} onChange={(v) => setManual({ ...manual, seen: v })} />}</Field>
               <Button type="submit" variant="primary" className="w-full" loading={manualBusy}>Record price</Button>
             </form>
           </Card>
