@@ -1,2 +1,2 @@
+# Kept for existing instructions/Dockerfile; the driver is now in requirements.txt.
 -r requirements.txt
-psycopg[binary]>=3.1

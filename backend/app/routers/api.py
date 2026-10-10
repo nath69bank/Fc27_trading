@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import schemas
-from ..config import get_settings
+from ..config import get_settings, storage_is_persistent
 from ..deps import bearer_token, current_user, get_db
 from ..models import User
 from ..security import create_session, revoke_session, verify_password
@@ -33,8 +33,13 @@ def _me(user: User) -> dict:
 
 
 @router.get("/health")
-def health() -> dict:
-    return {"ok": True}
+def health(request: Request) -> dict:
+    url = request.app.state.db.url
+    return {
+        "ok": True,
+        "database": "postgresql" if url.startswith("postgresql") else "sqlite",
+        "persistent": storage_is_persistent(url),
+    }
 
 
 @router.get("/auth/options")

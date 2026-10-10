@@ -44,7 +44,9 @@ class Base(DeclarativeBase):
 
 
 def make_engine(url: str) -> Engine:
-    kwargs: dict = {"future": True, "pool_pre_ping": True}
+    # Serverless instances sit idle between requests; recycle connections before the
+    # database (or its pooler) drops them.
+    kwargs: dict = {"future": True, "pool_pre_ping": True, "pool_recycle": 300}
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
     engine = create_engine(url, **kwargs)

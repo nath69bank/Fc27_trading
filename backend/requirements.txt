@@ -5,3 +5,5 @@ alembic>=1.13
 pydantic>=2.7
 httpx>=0.27
 python-multipart>=0.0.9
+# PostgreSQL driver: needed on Vercel/production (DATABASE_URL); unused with local SQLite.
+psycopg[binary]>=3.1

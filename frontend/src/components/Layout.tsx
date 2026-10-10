@@ -61,7 +61,11 @@ export default function Layout() {
   const [status, setStatus] = useState<DataStatus | null>(null)
   const [unread, setUnread] = useState(0)
   const [open, setOpen] = useState(false)
+  const [persistent, setPersistent] = useState(true)
   const location = useLocation()
+  useEffect(() => {
+    api<{ persistent: boolean }>('/health').then((h) => setPersistent(h.persistent)).catch(() => {})
+  }, [])
 
   const load = () => {
     api<DataStatus>('/market/status').then(setStatus).catch(() => {})
@@ -140,6 +144,11 @@ export default function Layout() {
         </div>
       </header>
       <main id="main" className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6">
+        {!persistent && (
+          <div role="alert" className="mb-4 rounded-lg border border-loss/40 bg-loss/10 px-3 py-2 text-sm text-loss">
+            <strong>Temporary storage.</strong> This deployment has no database configured, so accounts, trades and balances can be lost at any time. Connect PostgreSQL (DATABASE_URL) to keep data.
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

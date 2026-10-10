@@ -14,15 +14,33 @@ def _bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+ON_VERCEL = bool(os.getenv("VERCEL"))
+# Vercel functions have a read-only filesystem apart from /tmp, which is wiped between
+# instances. SQLite there only keeps the app booting; real data needs PostgreSQL.
+EPHEMERAL_SQLITE_URL = "sqlite:////tmp/fc27_market_engine.db"
+
+
+def resolve_database_url() -> str:
+    """DATABASE_URL, else POSTGRES_URL (set by Vercel's Neon/Postgres integrations), else SQLite.
+
+    Provider URLs come as postgres:// or postgresql://; SQLAlchemy needs the driver named."""
+    url = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL") or ""
+    if not url:
+        return EPHEMERAL_SQLITE_URL if ON_VERCEL else "sqlite:///./fc27_market_engine.db"
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
+
 @dataclass(frozen=True)
 class Settings:
-    database_url: str = field(
-        default_factory=lambda: os.getenv("DATABASE_URL", "sqlite:///./fc27_market_engine.db")
-    )
+    database_url: str = field(default_factory=resolve_database_url)
     # Run Alembic migrations on startup (handy for local dev and single-instance deploys).
     auto_migrate: bool = field(default_factory=lambda: _bool("AUTO_MIGRATE", True))
     # Seed the shared "demo" login (username demo / password from DEMO_PASSWORD) on startup.
-    seed_demo_user: bool = field(default_factory=lambda: _bool("SEED_DEMO_USER", True))
+    # Off by default on Vercel: a public deployment should not ship a shared, published login.
+    seed_demo_user: bool = field(default_factory=lambda: _bool("SEED_DEMO_USER", not ON_VERCEL))
     demo_password: str = field(default_factory=lambda: os.getenv("DEMO_PASSWORD", "demo-trader-27"))
     # Allow anyone to spin up a private, freshly seeded demo account from the login page.
     allow_demo_signup: bool = field(default_factory=lambda: _bool("ALLOW_DEMO_SIGNUP", True))
@@ -48,6 +66,10 @@ class Settings:
     )
     # Directory of the built frontend (frontend/dist). Served at / when present.
     frontend_dist: str = field(default_factory=lambda: os.getenv("FRONTEND_DIST", ""))
+
+
+def storage_is_persistent(url: str) -> bool:
+    return not (url.startswith("sqlite") and "/tmp/" in url)
 
 
 @lru_cache

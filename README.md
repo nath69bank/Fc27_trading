@@ -63,6 +63,29 @@ docker compose up --build    # http://localhost:8000, PostgreSQL 16 in the db se
 
 Change the passwords in `docker-compose.yml` before exposing it anywhere.
 
+### Vercel
+
+`vercel.json` deploys the repo as one Vercel project with two services:
+
+| Service | Root | Public path | What it is |
+|---|---|---|---|
+| `frontend` | `frontend/` | `/` (everything not under `/api`) | Vite static build; unknown paths fall back to `index.html` so deep links work |
+| `backend` | `backend/` | `/api/*` | FastAPI function (`app/main.py`); sees the original `/api/...` path |
+
+The browser calls the API on the same domain (`/api/...`), so no service-to-service
+bindings are needed.
+
+1. Import the repo in Vercel (it detects the services from `vercel.json`).
+2. **Add a PostgreSQL database**: Vercel Marketplace → Neon, or `vercel install neon`.
+   The integration sets `DATABASE_URL`/`POSTGRES_URL`, and the app accepts either.
+   Without one, the backend falls back to SQLite in `/tmp`, which Vercel wipes. The app
+   then shows a red "Temporary storage" warning, and data can disappear at any time.
+3. Deploy. Migrations run on cold start, serialised with a PostgreSQL advisory lock.
+
+On Vercel the shared `demo` login is **not** seeded by default (`SEED_DEMO_USER` defaults to
+false there); "Try the demo account" still creates private demo accounts. Locally,
+`vercel dev` runs both services together.
+
 Configuration is via environment variables. See [`.env.example`](.env.example) for every
 option with its default.
 

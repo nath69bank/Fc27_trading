@@ -41,16 +41,16 @@ def create_user(
     if db.scalar(select(func.count()).select_from(User).where(func.lower(User.username) == username.lower())):
         raise ServiceError(409, "username_taken", "That username is already registered.")
     user = User(username=username, password_hash=hash_password(password), is_demo=is_demo)
-    db.add(user)
-    db.flush()
-    db.add(UserSettings(user_id=user.id, starting_coins=starting_coins, alert_prefs=dict(DEFAULT_ALERT_PREFS)))
-    balance = AccountBalance(user_id=user.id, available_coins=0, invested_coins=0)
-    db.add(balance)
-    db.flush()
-    apply_balance_change(
-        db, balance, kind="opening", available_delta=starting_coins, invested_delta=0, reason="Opening balance"
-    )
     try:
+        db.add(user)
+        db.flush()  # a concurrent registration of the same name fails here, not at commit
+        db.add(UserSettings(user_id=user.id, starting_coins=starting_coins, alert_prefs=dict(DEFAULT_ALERT_PREFS)))
+        balance = AccountBalance(user_id=user.id, available_coins=0, invested_coins=0)
+        db.add(balance)
+        db.flush()
+        apply_balance_change(
+            db, balance, kind="opening", available_delta=starting_coins, invested_delta=0, reason="Opening balance"
+        )
         db.commit()
     except IntegrityError as exc:
         db.rollback()

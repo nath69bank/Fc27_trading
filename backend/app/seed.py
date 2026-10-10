@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from .models import User
 from .services.accounts import create_user
+from .services.common import ServiceError
 from .services.market_data import seed_sample_history
 from .services.watchlist import add_to_watchlist
 
@@ -42,5 +43,11 @@ def create_demo_account(db: Session, username: str | None = None, password: str 
 
 
 def ensure_shared_demo_user(db: Session, password: str) -> None:
-    if db.scalar(select(User).where(User.username == "demo")) is None:
+    if db.scalar(select(User).where(User.username == "demo")) is not None:
+        return
+    try:
         create_demo_account(db, "demo", password)
+    except ServiceError as exc:  # another instance seeded it first
+        db.rollback()
+        if exc.code != "username_taken":
+            raise
