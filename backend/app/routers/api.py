@@ -266,6 +266,11 @@ def sell(transfer_id: str, body: schemas.SaleCreate, response: Response, user: U
     return {**view, "replayed": not created}
 
 
+@router.post("/transfers/{transfer_id}/sell/preview")
+def sell_preview(transfer_id: str, body: schemas.SalePreview, user: User = Auth, db: Session = DB) -> dict:
+    return trading.preview_settlement(db, user, transfer_id, sale_price=body.sale_price, quantity=body.quantity)
+
+
 @router.post("/transfers/{transfer_id}/cancel")
 def cancel(transfer_id: str, body: schemas.CancelRequest, user: User = Auth, db: Session = DB) -> dict:
     return trading.cancel_transfer(db, user, transfer_id, reason=body.reason)

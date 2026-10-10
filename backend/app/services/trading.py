@@ -23,7 +23,7 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from ..db import utcnow
 from ..engine import TradeValidationError, bp_to_pct, ratio_bp
-from ..models import TradeLedgerEntry, Transfer, User
+from ..models import AccountBalance, TradeLedgerEntry, Transfer, User
 from .common import ServiceError, apply_balance_change, engine_for, get_settings_row, iso, lock_balance, not_found
 from .market_data import card_view, get_card, get_or_create_card, stats_for
 from .scanner import OPEN_STATUSES, position_cost
@@ -54,16 +54,14 @@ def get_transfer(db: Session, user: User, transfer_id: str) -> Transfer:
 
 def preview_purchase(db: Session, user: User, *, unit_price: int, quantity: int, card_id: str | None = None) -> dict:
     settings = get_settings_row(db, user)
-    balance = lock_balance(db, user)
+    balance = db.get(AccountBalance, user.id)
     existing = position_cost(db, user, card_id) if card_id else 0
     try:
         plan = engine_for(settings).plan_purchase(
             unit_price, quantity, balance.available_coins, balance.invested_coins, existing_position_cost=existing
         )
     except TradeValidationError as exc:
-        db.rollback()
         return {"ok": False, "code": exc.code, "message": exc.message}
-    db.rollback()
     return {"ok": True, **plan.__dict__, "mode": settings.mode}
 
 
@@ -111,6 +109,10 @@ def execute_purchase(
         raise ServiceError(422, "backdated_simulation", "Simulated purchases happen now; use manual mode to record past trades.")
 
     balance = lock_balance(db, user)
+    existing = db.scalar(select(Transfer).where(Transfer.user_id == user.id, Transfer.idempotency_key == idempotency_key))
+    if existing is not None:  # a concurrent retry of this same request won the lock first
+        db.rollback()
+        return transfer_view(db, user, existing), False
     try:
         plan = engine_for(settings).plan_purchase(
             unit_price,
@@ -186,12 +188,20 @@ def track_and_settle(
             raise ServiceError(409, "idempotency_conflict", "This request id was already used for a different sale.")
         return ledger_view(prior), False
 
-    transfer = db.scalar(
-        select(Transfer).where(Transfer.id == transfer_id, Transfer.user_id == user.id).with_for_update()
-    )
-    if transfer is None:
+    owned = db.scalar(select(Transfer.id).where(Transfer.id == transfer_id, Transfer.user_id == user.id))
+    if owned is None:
         raise not_found("Transfer")
+    balance = lock_balance(db, user)  # before reading transfer state: see lock_balance()
+    prior = db.scalar(
+        select(TradeLedgerEntry).where(TradeLedgerEntry.user_id == user.id, TradeLedgerEntry.idempotency_key == idempotency_key)
+    )
+    if prior is not None:  # a concurrent retry of this same request won the lock first
+        db.rollback()
+        return ledger_view(prior), False
+    transfer = db.scalar(select(Transfer).where(Transfer.id == transfer_id).with_for_update())
+    db.refresh(transfer)
     if transfer.status in ("sold", "cancelled") or transfer.quantity_remaining <= 0:
+        db.rollback()
         raise ServiceError(409, "already_settled", f"This transfer is already {transfer.status}; it cannot be settled again.")
 
     now = utcnow()
@@ -199,8 +209,10 @@ def track_and_settle(
     if sold_at.tzinfo is None:
         sold_at = sold_at.replace(tzinfo=timezone.utc)
     if sold_at > now + timedelta(minutes=5):
+        db.rollback()
         raise ServiceError(422, "future_timestamp", "Sale time cannot be in the future.")
     if sold_at < transfer.purchased_at:
+        db.rollback()
         raise ServiceError(422, "sale_before_purchase", "Sale time cannot be before the purchase time.")
 
     settings = get_settings_row(db, user)
@@ -237,7 +249,6 @@ def track_and_settle(
     if transfer.quantity_remaining == 0:
         transfer.status = "sold"
         transfer.closed_at = sold_at
-    balance = lock_balance(db, user)
     apply_balance_change(
         db,
         balance,
@@ -263,20 +274,32 @@ def track_and_settle(
     return ledger_view(entry), True
 
 
+def preview_settlement(db: Session, user: User, transfer_id: str, *, sale_price: int, quantity: int) -> dict:
+    """What a sale would book, computed by the same engine call track_and_settle() uses."""
+    t = get_transfer(db, user, transfer_id)
+    if t.status in ("sold", "cancelled"):
+        return {"ok": False, "code": "already_settled", "message": f"This transfer is already {t.status}."}
+    try:
+        s = engine_for(get_settings_row(db, user)).settle(t.purchase_price, t.quantity_remaining, quantity, sale_price)
+    except TradeValidationError as exc:
+        return {"ok": False, "code": exc.code, "message": exc.message}
+    return {"ok": True, **s.__dict__, "roi_pct": bp_to_pct(s.roi_bp)}
+
+
 def cancel_transfer(db: Session, user: User, transfer_id: str, *, reason: str = "") -> dict:
     """Cancel the unsold remainder of a transfer and return its cost to available coins.
     Completed partial sales stay in the ledger."""
-    transfer = db.scalar(
-        select(Transfer).where(Transfer.id == transfer_id, Transfer.user_id == user.id).with_for_update()
-    )
-    if transfer is None:
+    if db.scalar(select(Transfer.id).where(Transfer.id == transfer_id, Transfer.user_id == user.id)) is None:
         raise not_found("Transfer")
+    balance = lock_balance(db, user)
+    transfer = db.scalar(select(Transfer).where(Transfer.id == transfer_id).with_for_update())
+    db.refresh(transfer)
     if transfer.status in ("sold", "cancelled") or transfer.quantity_remaining <= 0:
+        db.rollback()
         raise ServiceError(409, "already_closed", f"This transfer is already {transfer.status}.")
     refund = transfer.remaining_cost
     transfer.status = "cancelled"
     transfer.closed_at = utcnow()
-    balance = lock_balance(db, user)
     apply_balance_change(
         db,
         balance,

@@ -104,6 +104,11 @@ class SaleCreate(Body):
     notes: str = Field(default="", max_length=1000)
 
 
+class SalePreview(Body):
+    sale_price: Coins
+    quantity: Qty
+
+
 class CancelRequest(Body):
     reason: str = Field(default="", max_length=200)
 

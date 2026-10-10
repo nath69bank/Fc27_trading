@@ -19,7 +19,21 @@ def key() -> str:
 
 @pytest.fixture
 def db_url(tmp_path):
-    return f"sqlite:///{tmp_path / 'test.db'}"
+    """SQLite file per test by default. Set TEST_DATABASE_URL (e.g. a throwaway PostgreSQL
+    database) to run the same suite against it; the schema is reset before each test."""
+    url = os.getenv("TEST_DATABASE_URL")
+    if not url:
+        return f"sqlite:///{tmp_path / 'test.db'}"
+    from sqlalchemy import create_engine, text
+
+    from app.db import Base
+
+    engine = create_engine(url)
+    Base.metadata.drop_all(engine)
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+    engine.dispose()
+    return url
 
 
 @pytest.fixture

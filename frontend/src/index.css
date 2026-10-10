@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html, body, #root { min-height: 100%; }
+body {
+  @apply bg-base text-ink font-sans antialiased;
+  background-image: radial-gradient(1200px 600px at 80% -10%, rgba(43, 213, 118, 0.06), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(91, 157, 255, 0.05), transparent 60%);
+  background-attachment: fixed;
+}
+.num { font-variant-numeric: tabular-nums; @apply font-mono; }
+:focus-visible { outline: 2px solid #5b9dff; outline-offset: 2px; border-radius: 6px; }
+@layer components {
+.card { @apply rounded-xl border border-line bg-panel/90 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset]; }
+.input {
+  @apply w-full rounded-lg border border-line-strong bg-panel-2 px-3 py-2 text-sm text-ink placeholder:text-ink-faint
+    focus:border-info focus:outline-none focus:ring-1 focus:ring-info;
+}
+.label { @apply mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted; }
+.th { @apply whitespace-nowrap px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted; }
+.td { @apply whitespace-nowrap px-3 py-2.5 text-sm; }
+}
+.recharts-tooltip-wrapper { outline: none; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

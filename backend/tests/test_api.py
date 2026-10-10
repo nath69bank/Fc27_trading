@@ -394,3 +394,72 @@ def test_exposure_alert(client, user):
     buy(client, user, item["card"]["id"], 10_000, qty=2)
     types = {a["type"] for a in client.get("/api/alerts", headers=user).json()["items"]}
     assert "exposure_limit" in types
+
+
+def test_sale_preview_matches_settlement(client, user):
+    item = add_card_with_prices(client, user)
+    t = buy(client, user, item["card"]["id"], 10_000, qty=2).json()
+    p = client.post(f"/api/transfers/{t['id']}/sell/preview", headers=user, json={"sale_price": 13_010, "quantity": 2}).json()
+    assert p["ok"] is True
+    e = sell(client, user, t["id"], 13_010, qty=2).json()
+    assert (p["gross"], p["tax"], p["net"], p["realised_profit"]) == (e["gross_proceeds"], e["tax"], e["net_proceeds"], e["realised_profit"])
+    p2 = client.post(f"/api/transfers/{t['id']}/sell/preview", headers=user, json={"sale_price": 13_010, "quantity": 1}).json()
+    assert p2["ok"] is False and p2["code"] == "already_settled"
+
+
+def test_live_provider_contract(client, user):
+    """An authorised HTTP provider is stored as source='live'; malformed rows are dropped."""
+    import httpx
+
+    from app.services.market_data import HttpJsonProvider, refresh_live
+    from app.security import user_for_token
+
+    item = add_card_with_prices(client, user, name="Live Card")
+    now = utcnow().isoformat()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["Authorization"] == "Bearer secret"
+        return httpx.Response(200, json={"prices": [
+            {"card_key": item["card"]["card_key"], "price": 10_050, "observed_at": now},
+            {"card_key": item["card"]["card_key"], "price": -1, "observed_at": now},
+            {"card_key": "unknown", "price": 500, "observed_at": now},
+        ]})
+
+    provider = HttpJsonProvider("https://provider.test/prices", "secret", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    db = client.app.state.db.SessionLocal()
+    try:
+        u = user_for_token(db, user["Authorization"].split()[1])
+        assert refresh_live(db, u, provider)["updated"] == 1
+    finally:
+        db.close()
+    status = client.get("/api/market/status", headers=user).json()
+    assert status["mode"] == "live" and status["observations_by_source"]["live"] == 1
+
+
+def test_concurrent_settlement_settles_once(client, user):
+    """Several simultaneous sale requests (different request ids) for one card: exactly one wins."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    item = add_card_with_prices(client, user)
+    t = buy(client, user, item["card"]["id"], 10_000).json()
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        codes = list(pool.map(lambda _: sell(client, user, t["id"], 14_000).status_code, range(6)))
+    assert codes.count(201) == 1, codes
+    assert all(c in (201, 409) for c in codes), codes
+    assert client.get("/api/ledger", headers=user).json()["total"] == 1
+    assert balance(client, user)["available_coins"] == 150_000 - 10_000 + 13_300
+    assert client.get("/api/account/reconcile", headers=user).json()["balanced"] is True
+
+
+def test_concurrent_purchases_cannot_overspend(client, user):
+    from concurrent.futures import ThreadPoolExecutor
+
+    client.put("/api/settings", headers=user, json={"max_investment_per_card": 10**9, "max_portfolio_exposure": 10**9})
+    item = add_card_with_prices(client, user)
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        codes = list(pool.map(lambda _: buy(client, user, item["card"]["id"], 60_000, target=80_000).status_code, range(6)))
+    assert codes.count(201) <= 2, codes  # 150,000 only covers two
+    b = balance(client, user)
+    assert b["available_coins"] >= 0
+    assert b["available_coins"] + b["invested_coins"] == 150_000
+    assert client.get("/api/account/reconcile", headers=user).json()["balanced"] is True

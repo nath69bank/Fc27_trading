@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ..db import utcnow
@@ -49,10 +49,26 @@ def engine_for(settings: UserSettings, *, with_limits: bool = True) -> FC27Marke
 
 
 def lock_balance(db: Session, user: User) -> AccountBalance:
-    """Load the balance row for update (row lock on PostgreSQL; version check everywhere)."""
+    """Serialise every coin-moving operation for this account, and return its balance row.
+
+    PostgreSQL takes a row lock (FOR UPDATE). The version bump then claims the row with a
+    compare-and-set: on SQLite, which has no row locks, that write takes the database write
+    lock up front, so everything the caller reads afterwards is current until it commits.
+    If another request changed the balance in between, this fails with a retryable 409.
+    Call it before reading any transfer state the operation depends on."""
     row = db.scalar(select(AccountBalance).where(AccountBalance.user_id == user.id).with_for_update())
     if row is None:
         raise ServiceError(500, "missing_balance", "Account balance is missing.")
+    claimed = db.execute(
+        update(AccountBalance)
+        .where(AccountBalance.user_id == user.id, AccountBalance.version == row.version)
+        .values(version=row.version + 1)
+        .execution_options(synchronize_session=False)
+    )
+    if claimed.rowcount != 1:
+        db.rollback()
+        raise ServiceError(409, "conflict", "Your balance changed while this request was processed. Try again.")
+    db.refresh(row)
     return row
 
 
