@@ -263,7 +263,7 @@ export interface Settings {
   max_portfolio_exposure: number
   exposure_warning_pct: number
   default_sell_strategy: 'target_price' | 'historical_high' | 'quick_flip'
-  platform: 'cross' | 'playstation' | 'xbox' | 'pc'
+  platform: 'console' | 'pc'
   stale_after_hours: number
   refresh_minutes: number
   holding_limit_hours: number
@@ -327,4 +327,48 @@ export interface FodderBoard {
   budget: number | null
   tax_rate_pct: number
   ratings: FodderRow[]
+}
+
+export interface DealRow extends Opportunity {
+  latest_seen_on: SeenOn | null
+  gap_to_max_buy?: number
+}
+
+export interface Deals {
+  generated_at: string
+  platform: string
+  scanned: number
+  stale_or_missing: number
+  deals: DealRow[]
+  near: DealRow[]
+  sell: DealRow[]
+}
+
+export interface ImportStatus {
+  configured: boolean
+  used_today: number
+  daily_limit: number
+  remaining_today: number
+}
+
+export type ImportSite = 'futbin' | 'futgg' | 'ingame' | 'discord' | 'other'
+
+export interface ExtractedRow {
+  player_name: string
+  rating: number | null
+  position: string | null
+  card_type: string | null
+  price: number | null
+  platform: 'console' | 'pc' | 'unknown'
+  confidence: 'high' | 'medium' | 'low'
+  matched_card_id: string | null
+  matched_card_name: string | null
+}
+
+export interface Extraction {
+  site: ImportSite
+  platform: 'console' | 'pc' | 'unknown'
+  your_platform: 'console' | 'pc'
+  notes: string
+  items: ExtractedRow[]
 }

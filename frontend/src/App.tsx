@@ -6,6 +6,7 @@ import Alerts from './pages/Alerts'
 import Dashboard from './pages/Dashboard'
 import Fodder from './pages/Fodder'
 import Gallery from './pages/Gallery'
+import Import from './pages/Import'
 import Playbook from './pages/Playbook'
 import History from './pages/History'
 import Performance from './pages/Performance'
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="watchlist/:id" element={<PlayerDetail />} />
         <Route path="gallery" element={<Gallery />} />
         <Route path="fodder" element={<Fodder />} />
+        <Route path="import" element={<Import />} />
         <Route path="playbook" element={<Playbook />} />
         <Route path="transfers" element={<Transfers />} />
         <Route path="history" element={<History />} />

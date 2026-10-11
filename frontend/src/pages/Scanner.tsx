@@ -6,6 +6,7 @@ import { ago, coins, parseCoins, pct, pnlClass, signedCoins } from '../lib/forma
 import type { Opportunity, Signal, SignalRow } from '../lib/types'
 import { Button, Card, CoinInput, EmptyState, ErrorBox, Field, Notice, PageHeader, SignalBadge, SourceBadge, Spinner, useToast, cx } from '../components/ui'
 import OpportunityCard from '../components/OpportunityCard'
+import DealFinder from '../components/DealFinder'
 import { BuyDialog, type BuyTarget } from '../components/TradeDialogs'
 import { announceChange, useRefreshSignal } from '../components/Layout'
 
@@ -89,6 +90,7 @@ export default function Scanner() {
       />
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-4">
+          <DealFinder />
           <Card
             title="Watchlist scan"
             subtitle="Uses stored prices: historical low/high over the last 30 days"

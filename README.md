@@ -16,7 +16,7 @@ and measures trading performance.
 | Area | What it does |
 |---|---|
 | **Dashboard** | Available / invested coins, portfolio value, realised profit, open transfers, trading ROI. Also opportunities, transfers near target, recent trades, P&L chart, alerts and a data-source indicator |
-| **Market Scanner** | `evaluate_opportunity()` on your watchlist or on prices you type in. Returns BUY / HOLD / SELL / WATCH / RISK with the reasoning behind it |
+| **Market Scanner** | **Deal Finder** re-scans every tracked card on a timer (30s to 5 min) and ranks deals after tax: buy now, snipe targets within 3% of the max buy, and cards at target sell, with an alert when a new deal appears. Plus `evaluate_opportunity()` on your watchlist or typed-in prices, with the reasoning behind each signal |
 | **Card Gallery** | Every tracked card as a tile with latest price, 30-day range and signal. Save each player's FUTBIN and FUT.GG pages for one-click access, and record prices with where you saw them |
 | **Watchlist** | `add_to_watchlist()`, edit, remove, search, sort, favourites, per-player detail page, evaluate on demand |
 | **Fodder Tracker** | Floors for the cheapest gold at ratings 82–91 (the cards SBCs consume). Shows what selling into an X% spike pays per card and on your budget, after tax, with buy and watch actions |
@@ -24,6 +24,7 @@ and measures trading performance.
 | **Active Transfers** | `execute_purchase()` with review → confirm. Update estimates and targets, mark as listed, record (partial) sales, cancel, view details |
 | **Trade History** | `track_and_settle()` ledger: tax, net proceeds, realised profit, ROI. Search, sort, paginate, CSV export |
 | **Performance Analytics** | `generate_performance_report()`: win rate, best and worst trades, average holding time. Charts for cumulative profit, daily/weekly profit, profit by player, ROI distribution, wins vs losses and account value |
+| **Screenshot Import** | Upload a screenshot of FUTBIN, FUT.GG, the in-game market or a trading-group price card; Claude reads the players and prices, you confirm the rows, and they're saved as console prices tagged with where they were seen. Needs `ANTHROPIC_API_KEY` |
 | **Price History** | Manual entry, CSV import, demo simulation, optional live refresh. Every observation is labelled with its source and freshness |
 | **Settings** | Tax, thresholds, limits, selling strategy, platform, staleness, mode, alert toggles. Also an **audited balance adjustment** workflow and the balance audit log |
 | **Alerts** | In-app alerts with history: below target buy, target sell reached, profit threshold, holding limit, stale data, exposure limit |
@@ -67,6 +68,12 @@ docker compose up --build    # http://localhost:8000, PostgreSQL 16 in the db se
 
 Change the passwords in `docker-compose.yml` before exposing it anywhere.
 
+### Console market
+
+The app is tuned for console: Xbox and PlayStation share one transfer market, so prices are
+stored and compared as **Console** (PC is available in Settings but separate). Older
+`cross` / `playstation` / `xbox` values are migrated to `console` automatically.
+
 ### Vercel
 
 `vercel.json` deploys the repo as one Vercel project with two services:
@@ -84,7 +91,8 @@ bindings are needed.
    The integration sets `DATABASE_URL`/`POSTGRES_URL`, and the app accepts either.
    Without one, the backend falls back to SQLite in `/tmp`, which Vercel wipes. The app
    then shows a red "Temporary storage" warning, and data can disappear at any time.
-3. Deploy. Migrations run on cold start, serialised with a PostgreSQL advisory lock.
+3. Optional: set `ANTHROPIC_API_KEY` to switch on Screenshot Import.
+4. Deploy. Migrations run on cold start, serialised with a PostgreSQL advisory lock.
 
 The site is open: every visitor gets their own private guest desk automatically, with no
 login. Set `ALLOW_DEMO_SIGNUP=false` to turn that off. Locally,
@@ -180,7 +188,7 @@ The expected sell price follows your **default selling strategy**: your target s
 ## Tests
 
 ```bash
-cd backend && pytest                       # 82 tests, SQLite
+cd backend && pytest                       # 87 tests, SQLite
 TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost/fc27_test pytest   # same suite on PostgreSQL
 ```
 

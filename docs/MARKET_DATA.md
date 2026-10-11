@@ -42,6 +42,15 @@ What the app does instead:
 * **Seen on**: manual prices record where you read them (in-game market, FUTBIN, FUT.GG,
   other), shown as "via FUTBIN" etc. next to the price. They remain `manual` data: the app
   has not verified them.
+* **Screenshot import**: the practical way to use their player data. Screenshot the page
+  you're viewing (or a price card posted in a trading group) and upload it on **Screenshot
+  Import**. Claude (`claude-opus-5-5`, structured output) reads each player, rating, position
+  and console price, you tick the rows that are right, and only those are saved as `manual`
+  prices with *seen on* set to the site. The image is not stored. Reads are logged and
+  capped per desk and site-wide per day, because each one is a paid API call.
+* **No crawling**: the app does not fetch or scrape either site. Both block automated access,
+  and getting around that would mean disguising the traffic. A crawler would also break
+  whenever their page layouts change.
 * **Images**: a card image is a URL you provide. Use images you have the right to use.
 
 If you obtain licensed access to a price feed (from one of these sites or anyone else),

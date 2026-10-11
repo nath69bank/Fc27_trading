@@ -173,3 +173,70 @@ def recent_signals(db: Session, user: User, *, limit: int = 20, signal: str | No
         q = q.where(OpportunityEvaluation.signal == signal.upper())
     rows = db.scalars(q.order_by(OpportunityEvaluation.created_at.desc()).limit(limit)).all()
     return [evaluation_view(e) for e in rows]
+
+
+def evaluate_card(db: Session, user: User, card: Card) -> tuple[Opportunity, PriceStats]:
+    """Evaluate a card that isn't on the watchlist: it resells at its 30-day high."""
+    settings = get_settings_row(db, user)
+    stats = stats_for(db, user, card)
+    balance = db.get(AccountBalance, user.id)
+    opp = engine_for(settings).evaluate_opportunity(
+        card.player_name,
+        stats.latest_price,
+        stats.historical_low,
+        stats.historical_high,
+        price_history=stats.history,
+        observed_at=stats.latest_at,
+        data_source=stats.latest_source,
+        existing_position_cost=position_cost(db, user, card.id),
+        current_exposure=balance.invested_coins,
+        trend_24h_bp=stats.trend_24h_bp,
+    )
+    return opp, stats
+
+
+NEAR_BUY_MARGIN_BP = 300  # "nearly a deal": within 3% above the suggested max buy
+
+
+def find_deals(db: Session, user: User, *, limit: int = 20) -> dict:
+    """One pass over every card the user tracks, ranked best deal first.
+
+    BUY signals rank by estimated profit after tax. 'Near' lists cards a few percent above
+    their suggested max buy: worth a snipe at the max-buy price. Nothing is recorded, so the
+    UI can call this on a timer without filling the signal log."""
+    items = {w.card_id: w for w in db.scalars(select(WatchlistItem).where(WatchlistItem.user_id == user.id)).all()}
+    cards = db.scalars(select(Card).where(Card.user_id == user.id)).all()
+    deals, near, sells, watch = [], [], [], 0
+    for card in cards:
+        item = items.get(card.id)
+        opp, stats = evaluate_item(db, user, item) if item else evaluate_card(db, user, card)
+        if stats.latest_price is None:
+            continue
+        view = opportunity_view(opp, card=card, item=item)
+        view["latest_seen_on"] = stats.latest_seen_on
+        if opp.signal == "BUY":
+            deals.append(view)
+        elif opp.signal == "SELL":
+            sells.append(view)
+        elif opp.signal == "WATCH":
+            watch += 1
+        elif (
+            opp.signal == "HOLD"
+            and opp.suggested_max_buy
+            and opp.current_price
+            and opp.estimated_profit is not None
+            and opp.current_price * 10_000 <= opp.suggested_max_buy * (10_000 + NEAR_BUY_MARGIN_BP)
+        ):
+            view["gap_to_max_buy"] = opp.current_price - opp.suggested_max_buy
+            near.append(view)
+    deals.sort(key=lambda d: (-(d["estimated_profit"] or 0), -(d["roi_pct"] or 0)))
+    near.sort(key=lambda d: d["gap_to_max_buy"])
+    return {
+        "generated_at": iso(utcnow()),
+        "platform": get_settings_row(db, user).platform,
+        "scanned": len(cards),
+        "stale_or_missing": watch,
+        "deals": deals[:limit],
+        "near": near[:limit],
+        "sell": sells[:limit],
+    }

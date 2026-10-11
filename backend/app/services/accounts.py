@@ -25,7 +25,8 @@ ALERT_TYPES = (
 )
 DEFAULT_ALERT_PREFS = {t: True for t in ALERT_TYPES}
 MODES = ("simulation", "manual")
-PLATFORMS = ("cross", "playstation", "xbox", "pc")
+# Xbox and PlayStation share one console transfer market; PC is separate.
+PLATFORMS = ("console", "pc")
 SELL_STRATEGIES = ("target_price", "historical_high", "quick_flip")
 
 

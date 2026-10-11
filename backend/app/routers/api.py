@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -13,11 +14,12 @@ from sqlalchemy.orm import Session
 
 from .. import schemas
 from ..config import get_settings, storage_is_persistent
+from ..db import utcnow
 from ..deps import bearer_token, current_user, get_db
 from ..models import User
 from ..security import create_session, revoke_session, verify_password
 from ..seed import create_demo_account, prune_abandoned_guests
-from ..services import accounts, alerts, fodder, market_data, reports, scanner, trading, watchlist
+from ..services import accounts, alerts, fodder, market_data, reports, scanner, screenshot, trading, watchlist
 from ..services.common import ServiceError, engine_for, get_settings_row
 
 router = APIRouter(prefix="/api")
@@ -155,6 +157,12 @@ def scanner_scan(user: User = Auth, db: Session = DB) -> list[dict]:
     return results
 
 
+@router.get("/scanner/deals")
+def scanner_deals(user: User = Auth, db: Session = DB) -> dict:
+    """Ranked deals across every tracked card. Read-only, so it is safe to poll."""
+    return scanner.find_deals(db, user)
+
+
 @router.get("/scanner/signals")
 def scanner_signals(
     signal: str | None = None, limit: int = Query(50, ge=1, le=500), user: User = Auth, db: Session = DB
@@ -232,6 +240,37 @@ def simulate(user: User = Auth, db: Session = DB) -> dict:
 @router.post("/market/refresh")
 def refresh_live(user: User = Auth, db: Session = DB) -> dict:
     result = market_data.refresh_live(db, user)
+    trading.refresh_statuses(db, user)
+    alerts.refresh_alerts(db, user)
+    return result
+
+
+# --------------------------------------------------------------------------- screenshot import
+
+
+@router.get("/import/status")
+def import_status(user: User = Auth, db: Session = DB) -> dict:
+    from sqlalchemy import func, select
+
+    from ..models import ScreenshotImport
+
+    since = utcnow() - timedelta(days=1)
+    used = db.scalar(
+        select(func.count()).select_from(ScreenshotImport).where(ScreenshotImport.user_id == user.id, ScreenshotImport.created_at >= since)
+    )
+    limit = get_settings().screenshot_daily_limit_per_user
+    return {"configured": screenshot.is_configured(), "used_today": used, "daily_limit": limit, "remaining_today": max(limit - used, 0)}
+
+
+@router.post("/import/screenshot")
+def import_screenshot(body: schemas.ScreenshotUpload, user: User = Auth, db: Session = DB) -> dict:
+    """Claude reads the prices; nothing is saved until the user confirms rows."""
+    return screenshot.extract_prices(db, user, body.image_base64, body.media_type)
+
+
+@router.post("/import/screenshot/commit", status_code=201)
+def commit_screenshot(body: schemas.ScreenshotCommit, user: User = Auth, db: Session = DB) -> dict:
+    result = screenshot.commit_rows(db, user, [r.model_dump() for r in body.rows], site=body.site)
     trading.refresh_statuses(db, user)
     alerts.refresh_alerts(db, user)
     return result

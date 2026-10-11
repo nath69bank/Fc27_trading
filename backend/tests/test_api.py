@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.db import utcnow
@@ -567,3 +568,132 @@ def test_opportunity_reports_break_even_and_trend(client, demo_user):
     opp = client.post(f"/api/watchlist/{mg['id']}/evaluate", headers=demo_user).json()
     assert opp["signal"] == "BUY" and opp["break_even_sell"] == 26_526
     assert opp["trend_24h_pct"] is not None  # sample history spans 14 days
+
+
+# ---------------------------------------------------------------- console market, deals, screenshot import
+
+
+def test_console_is_the_default_market(client, user):
+    s = client.get("/api/settings", headers=user).json()
+    assert s["platform"] == "console"
+    assert client.put("/api/settings", headers=user, json={"platform": "xbox"}).status_code == 422
+    r = client.post("/api/market/import", headers=user, json={"csv": "player_name,price,platform\nA,1000,xbox\nB,2000,PS5\nC,3000,pc\nD,4000,switch\n"})
+    assert r.json()["imported"] == 3 and r.json()["error_count"] == 1
+    status = client.get("/api/market/status", headers=user).json()
+    assert status["platform"] == "console" and status["observations_by_source"]["csv"] == 3
+
+
+def test_deal_finder_ranks_buys_and_near_misses(client, demo_user):
+    d = client.get("/api/scanner/deals", headers=demo_user).json()
+    assert d["platform"] == "console" and d["scanned"] == 2
+    assert [x["player_name"] for x in d["deals"]] == ["Meta Gold Winger"]
+    assert d["deals"][0]["estimated_profit"] == 5_200
+    # read-only: polling it never fills the signal log
+    assert client.get("/api/scanner/signals", headers=demo_user).json() == []
+
+
+class _FakeClaude:
+    """Stands in for anthropic.Anthropic so tests never call the API."""
+
+    def __init__(self, parsed, stop_reason="end_turn"):
+        from types import SimpleNamespace
+
+        self.calls = []
+        outer = self
+
+        class _Msgs:
+            def parse(self, **kw):
+                outer.calls.append(kw)
+                return SimpleNamespace(stop_reason=stop_reason, parsed_output=parsed)
+
+        self.beta = SimpleNamespace(messages=_Msgs())
+
+
+PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+
+
+def _extraction():
+    from app.services.screenshot import Extraction, ExtractedPrice
+
+    return Extraction(site="futbin", platform="console", notes="", items=[
+        ExtractedPrice(player_name="Meta Gold Winger", rating=86, position="RW", card_type="Demo Gold Rare", price=25_100, platform="console", confidence="high"),
+        ExtractedPrice(player_name="Caicedo", rating=85, position="LW", card_type=None, price=7_900, platform="unknown", confidence="high"),
+        ExtractedPrice(player_name="Blurry", rating=None, position=None, card_type=None, price=99_000_000, platform="console", confidence="low"),
+    ])
+
+
+def test_screenshot_extract_then_commit(client, demo_user):
+    from app.security import user_for_token
+    from app.services import screenshot
+
+    fake = _FakeClaude(_extraction())
+    db = client.app.state.db.SessionLocal()
+    try:
+        u = user_for_token(db, demo_user["Authorization"].split()[1])
+        out = screenshot.extract_prices(db, u, PNG, "image/png", client=fake)
+    finally:
+        db.close()
+    call = fake.calls[0]
+    assert call["model"] == "claude-opus-5-5" and call["fallbacks"] == "default"
+    assert call["messages"][0]["content"][0]["type"] == "image"
+    names = {i["player_name"]: i for i in out["items"]}
+    assert names["Meta Gold Winger"]["matched_card_name"] == "Meta Gold Winger"
+    assert names["Caicedo"]["platform"] == "console" and names["Caicedo"]["matched_card_id"] is None
+    assert names["Blurry"]["price"] is None  # out-of-range price discarded
+
+    rows = [{k: names[n][k] for k in ("player_name", "rating", "position", "card_type", "price", "platform")} for n in ("Meta Gold Winger", "Caicedo")]
+    r = client.post("/api/import/screenshot/commit", headers=demo_user, json={"site": "futbin", "rows": rows})
+    assert r.status_code == 201 and r.json()["saved"] == 2
+    w = next(x for x in client.get("/api/watchlist", headers=demo_user).json() if x["card"]["player_name"] == "Meta Gold Winger")
+    assert w["latest_price"] == 25_100 and w["latest_seen_on"] == "futbin" and w["latest_source"] == "manual"
+    assert any(c["player_name"] == "Caicedo" for c in client.get("/api/market/cards", headers=demo_user).json())
+    pc = dict(rows[1], platform="pc")
+    r = client.post("/api/import/screenshot/commit", headers=demo_user, json={"site": "futgg", "rows": [pc]})
+    assert r.json()["saved"] == 0 and "PC price" in r.json()["skipped"][0]["error"]
+
+
+def test_screenshot_guards(client, user, monkeypatch):
+    from app.security import user_for_token
+    from app.services import screenshot
+    from app.services.common import ServiceError
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    r = client.post("/api/import/screenshot", headers=user, json={"image_base64": PNG, "media_type": "image/png"})
+    assert r.status_code == 503 and r.json()["detail"]["code"] == "not_configured"
+    assert client.get("/api/import/status", headers=user).json()["configured"] is False
+    assert client.post("/api/import/screenshot", headers=user, json={"image_base64": PNG, "media_type": "image/bmp"}).status_code == 422
+
+    db = client.app.state.db.SessionLocal()
+    try:
+        u = user_for_token(db, user["Authorization"].split()[1])
+        with pytest.raises(ServiceError) as exc:
+            screenshot.extract_prices(db, u, "not base64!!", "image/png", client=_FakeClaude(_extraction()))
+        assert exc.value.code == "invalid_image"
+        with pytest.raises(ServiceError) as exc:
+            screenshot.extract_prices(db, u, PNG, "image/png", client=_FakeClaude(None, stop_reason="refusal"))
+        assert exc.value.code == "refused"
+    finally:
+        db.close()
+
+
+def test_screenshot_daily_limit(client, user, monkeypatch):
+    import dataclasses
+
+    from app import config
+    from app.security import user_for_token
+    from app.services import screenshot
+    from app.services.common import ServiceError
+
+    limited = dataclasses.replace(config.get_settings(), screenshot_daily_limit_per_user=2)
+    monkeypatch.setattr(screenshot, "get_settings", lambda: limited)
+    db = client.app.state.db.SessionLocal()
+    try:
+        u = user_for_token(db, user["Authorization"].split()[1])
+        for _ in range(2):
+            screenshot.extract_prices(db, u, PNG, "image/png", client=_FakeClaude(_extraction()))
+        with pytest.raises(ServiceError) as exc:
+            screenshot.extract_prices(db, u, PNG, "image/png", client=_FakeClaude(_extraction()))
+        assert exc.value.status == 429
+    finally:
+        db.close()

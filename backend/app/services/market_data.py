@@ -45,6 +45,18 @@ MAX_CSV_ROWS = 5_000
 # --------------------------------------------------------------------------- cards
 
 
+PLATFORM_ALIASES = {
+    "console": "console", "xbox": "console", "playstation": "console", "ps": "console", "ps4": "console",
+    "ps5": "console", "xbox one": "console", "xbox series": "console", "xbox series x": "console",
+    "xbox/ps": "console", "ps/xbox": "console", "cross": "console", "pc": "pc",
+}
+
+
+def normalise_platform(value: str | None) -> str | None:
+    """Map whatever a CSV or screenshot calls the platform to the app's two markets."""
+    return PLATFORM_ALIASES.get((value or "").strip().lower())
+
+
 def card_key(player_name: str, version: str | None = None, rating: int | None = None) -> str:
     parts = [player_name, version or "", str(rating or "")]
     return re.sub(r"[^a-z0-9]+", "-", "|".join(parts).lower()).strip("-")[:160]
@@ -359,9 +371,10 @@ def import_csv(db: Session, user: User, text: str) -> dict:
         try:
             price = int(row["price"].replace(",", ""))
             observed = _parse_ts(row["observed_at"]) if row.get("observed_at") else utcnow()
-            platform = row.get("platform") or settings.platform
-            if platform not in ("cross", "playstation", "xbox", "pc"):
-                raise ValueError(f"unknown platform '{platform}'")
+            raw_platform = row.get("platform") or settings.platform
+            platform = normalise_platform(raw_platform)
+            if platform is None:
+                raise ValueError(f"unknown platform '{raw_platform}' (use console or pc)")
             rating = int(row["rating"]) if row.get("rating") else None
             with db.begin_nested():
                 card = get_or_create_card(db, user, row.get("player_name", ""), version=row.get("version"), rating=rating)

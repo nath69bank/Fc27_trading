@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
-  Bell, BookOpen, CandlestickChart, ClipboardList, Gauge, GraduationCap, Layers, LayoutGrid, LineChart, Menu, RotateCcw, Radar, Settings as SettingsIcon, Star, X,
+  Bell, BookOpen, CandlestickChart, ClipboardList, Gauge, GraduationCap, Layers, LayoutGrid, LineChart, Menu, RotateCcw, ScanText, Radar, Settings as SettingsIcon, Star, X,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -28,6 +28,7 @@ const NAV = [
   { to: '/transfers', label: 'Active Transfers', icon: ClipboardList },
   { to: '/history', label: 'Trade History', icon: BookOpen },
   { to: '/performance', label: 'Performance Analytics', icon: LineChart },
+  { to: '/import', label: 'Screenshot Import', icon: ScanText },
   { to: '/prices', label: 'Price History', icon: CandlestickChart },
   { to: '/playbook', label: 'Trading Playbook', icon: GraduationCap },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
@@ -42,7 +43,8 @@ export function DataModeIndicator({ status, compact }: { status: DataStatus | nu
     none: { label: 'NO DATA', cls: 'border-line-strong bg-panel-2 text-ink-muted', dot: 'bg-ink-faint' },
   }[status.mode]
   return (
-    <div className="flex items-center gap-2" title={`Market data: ${meta.label.toLowerCase()}. Trading mode: ${status.trading_mode}.`}>
+    <div className="flex items-center gap-2" title={`${status.platform === 'console' ? 'Console market (Xbox & PlayStation)' : 'PC market'}. Market data: ${meta.label.toLowerCase()}. Trading mode: ${status.trading_mode}.`}>
+      <Badge className="border-[#107c10]/60 bg-[#107c10]/15 text-[#5fd35f]">{status.platform === 'console' ? 'CONSOLE' : 'PC'}</Badge>
       <Badge className={meta.cls}>
         <span className={cx('h-1.5 w-1.5 rounded-full', meta.dot, status.mode === 'live' && 'animate-pulse')} aria-hidden />
         {meta.label} DATA

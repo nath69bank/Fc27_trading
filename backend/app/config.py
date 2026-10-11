@@ -64,6 +64,9 @@ class Settings:
     market_data_timeout_seconds: float = field(
         default_factory=lambda: float(os.getenv("MARKET_DATA_TIMEOUT_SECONDS", "10"))
     )
+    # Screenshot import (Claude reads prices off a screenshot). Needs ANTHROPIC_API_KEY.
+    screenshot_daily_limit_per_user: int = field(default_factory=lambda: int(os.getenv("SCREENSHOT_DAILY_LIMIT_PER_USER", "25")))
+    screenshot_daily_limit_total: int = field(default_factory=lambda: int(os.getenv("SCREENSHOT_DAILY_LIMIT_TOTAL", "300")))
     # Directory of the built frontend (frontend/dist). Served at / when present.
     frontend_dist: str = field(default_factory=lambda: os.getenv("FRONTEND_DIST", ""))
 

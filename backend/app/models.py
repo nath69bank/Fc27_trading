@@ -67,7 +67,7 @@ class UserSettings(Base):
     max_portfolio_exposure: Mapped[int] = mapped_column(BigInteger, default=120_000)
     exposure_warning_bp: Mapped[int] = mapped_column(Integer, default=8_000)  # warn at 80% of limit
     default_sell_strategy: Mapped[str] = mapped_column(String(32), default="target_price")
-    platform: Mapped[str] = mapped_column(String(16), default="cross")
+    platform: Mapped[str] = mapped_column(String(16), default="console")
     stale_after_hours: Mapped[int] = mapped_column(Integer, default=24)
     refresh_minutes: Mapped[int] = mapped_column(Integer, default=15)
     holding_limit_hours: Mapped[int] = mapped_column(Integer, default=72)
@@ -141,7 +141,7 @@ class MarketPrice(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     card_id: Mapped[str] = mapped_column(ForeignKey("cards.id", ondelete="CASCADE"))
-    platform: Mapped[str] = mapped_column(String(16), default="cross")
+    platform: Mapped[str] = mapped_column(String(16), default="console")
     price: Mapped[int] = mapped_column(BigInteger)
     # manual | csv | sample | simulated | live
     source: Mapped[str] = mapped_column(String(16))
@@ -268,3 +268,16 @@ class Alert(Base):
     dedupe_key: Mapped[str] = mapped_column(String(160))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
     read_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+
+
+class ScreenshotImport(Base):
+    """One screenshot read by Claude. Keeps the usage log that enforces the daily limits;
+    the image itself is never stored."""
+
+    __tablename__ = "screenshot_imports"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(16))  # ok | refused | error
+    items_found: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)

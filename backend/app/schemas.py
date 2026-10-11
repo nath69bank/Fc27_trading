@@ -76,7 +76,7 @@ class PriceCreate(Body):
     player_name: str | None = Field(default=None, max_length=120)
     price: Coins
     observed_at: datetime | None = None
-    platform: Literal["cross", "playstation", "xbox", "pc"] | None = None
+    platform: Literal["console", "pc"] | None = None
     seen_on: SeenOn | None = None
 
 
@@ -162,3 +162,22 @@ class FodderPrice(Body):
     price: Coins
     seen_on: SeenOn | None = None
     observed_at: datetime | None = None
+
+
+class ScreenshotUpload(Body):
+    image_base64: str = Field(min_length=16, max_length=7_200_000)
+    media_type: Literal["image/png", "image/jpeg", "image/webp", "image/gif"]
+
+
+class ScreenshotRow(Body):
+    player_name: str = Field(min_length=1, max_length=120)
+    rating: int | None = Field(default=None, ge=1, le=99)
+    position: str | None = Field(default=None, max_length=8)
+    card_type: str | None = Field(default=None, max_length=60)
+    price: Coins
+    platform: Literal["console", "pc", "unknown"] = "unknown"
+
+
+class ScreenshotCommit(Body):
+    site: Literal["futbin", "futgg", "ingame", "discord", "other"]
+    rows: list[ScreenshotRow] = Field(min_length=1, max_length=100)

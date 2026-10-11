@@ -135,10 +135,10 @@ export default function SettingsPage() {
           </Card>
           <Card title="Market data">
             <div className="grid gap-3 sm:grid-cols-3">
-              <Field label="Preferred platform">
+              <Field label="Market" hint="Xbox and PlayStation share one console market">
                 {(id) => (
                   <select id={id} className="input" value={f.platform} onChange={(e) => set('platform')(e.target.value)}>
-                    <option value="cross">Cross-platform</option><option value="playstation">PlayStation</option><option value="xbox">Xbox</option><option value="pc">PC</option>
+                    <option value="console">Console (Xbox &amp; PlayStation)</option><option value="pc">PC</option>
                   </select>
                 )}
               </Field>
