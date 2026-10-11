@@ -408,6 +408,7 @@ def transfer_view(db: Session, user: User, t: Transfer) -> dict:
         "expected_tax": expected.tax,
         "expected_profit": expected_profit,
         "expected_roi_pct": bp_to_pct(ratio_bp(expected_profit, invested)),
+        "break_even_sell": engine.break_even_price(t.purchase_price),
         "current_price": est_price,
         "current_price_source": est_source,
         "current_value": est_price * t.quantity_remaining,

@@ -23,7 +23,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
-from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal
 
 BP = 10_000  # basis points in 100%
 
@@ -32,6 +32,9 @@ SIGNAL_HOLD = "HOLD"
 SIGNAL_SELL = "SELL"
 SIGNAL_WATCH = "WATCH"
 SIGNAL_RISK = "RISK"
+
+TREND_FALLING_BP = 1_000  # warn when a price has fallen 10%+ in 24h
+TREND_SPIKE_BP = 1_500  # warn when a price has risen 15%+ in 24h
 
 DISCLAIMER = (
     "Estimate based on historical and user-supplied prices. Past prices do not guarantee "
@@ -125,6 +128,8 @@ class Opportunity:
     reasons: list[str]
     explanation: str
     disclaimer: str = DISCLAIMER
+    break_even_sell: int | None = None  # lowest resale price that recovers the current price after tax
+    trend_24h_bp: int | None = None  # price change vs ~24h ago, in basis points
 
     @property
     def roi_pct(self) -> float | None:
@@ -133,6 +138,7 @@ class Opportunity:
     def to_dict(self) -> dict:
         d = asdict(self)
         d["roi_pct"] = self.roi_pct
+        d["trend_24h_pct"] = bp_to_pct(self.trend_24h_bp)
         d["observed_at"] = self.observed_at.isoformat() if self.observed_at else None
         return d
 
@@ -231,6 +237,47 @@ class FC27MarketEngine:
     def entry_threshold_price(self, historical_low: int) -> int:
         return floor_coins(Decimal(historical_low) * self.config.entry_threshold_bp / BP)
 
+    def break_even_price(self, purchase_price: int) -> int:
+        """Lowest per-card sale price whose after-tax proceeds recover the purchase price."""
+        if purchase_price <= 0:
+            return 0
+        guess = int((Decimal(purchase_price) * BP / (BP - self.config.tax_rate_bp)).to_integral_value(rounding=ROUND_CEILING))
+        while guess > 1 and self.net_after_tax(guess - 1) >= purchase_price:
+            guess -= 1
+        while self.net_after_tax(guess) < purchase_price:
+            guess += 1
+        return guess
+
+    def max_buy_for_profit(self, sale_price: int, target_profit: int = 0) -> int:
+        """Most you can pay per card and still clear target_profit when it resells at sale_price."""
+        return max(self.net_after_tax(sale_price) - target_profit, 0)
+
+    def flip(self, buy_price: int, sell_price: int, quantity: int = 1, target_profit: int = 0) -> dict:
+        """The full after-tax picture of buying at one price and reselling at another."""
+        if buy_price <= 0 or sell_price <= 0 or quantity <= 0:
+            raise TradeValidationError("invalid_amount", "Prices and quantity must be positive.")
+        sale = self.sale_breakdown(sell_price, quantity)
+        cost = buy_price * quantity
+        profit = sale.net - cost
+        break_even = self.break_even_price(buy_price)
+        return {
+            "buy_price": buy_price,
+            "sell_price": sell_price,
+            "quantity": quantity,
+            "cost": cost,
+            "gross": sale.gross,
+            "tax": sale.tax,
+            "net": sale.net,
+            "profit": profit,
+            "profit_per_card": round_coins(Decimal(profit) / quantity),
+            "roi_pct": bp_to_pct(ratio_bp(profit, cost)),
+            "break_even_sell": break_even,
+            "required_rise_pct": bp_to_pct(ratio_bp(break_even - buy_price, buy_price)),
+            "target_profit": target_profit,
+            "max_buy_for_target": self.max_buy_for_profit(sell_price, target_profit),
+            "sell_for_target": self.break_even_price(buy_price + target_profit),
+        }
+
     # -- opportunity evaluation -------------------------------------------------------
 
     def evaluate_opportunity(
@@ -248,6 +295,7 @@ class FC27MarketEngine:
         quantity: int = 1,
         existing_position_cost: int = 0,
         current_exposure: int | None = None,
+        trend_24h_bp: int | None = None,
     ) -> Opportunity:
         """Classify a buy-now price as BUY / HOLD / SELL / WATCH / RISK.
 
@@ -291,6 +339,7 @@ class FC27MarketEngine:
                 checks=checks,
                 reasons=reasons,
                 explanation=explanation,
+                trend_24h_bp=trend_24h_bp,
             )
             base.update(extra)
             return Opportunity(**base)
@@ -347,7 +396,19 @@ class FC27MarketEngine:
             expected_net_proceeds=net,
             estimated_profit=profit,
             roi_bp=roi,
+            break_even_sell=self.break_even_price(current_price),
         )
+
+        # Momentum warnings. They explain risk; they never change the signal rules.
+        if trend_24h_bp is not None and trend_24h_bp <= -TREND_FALLING_BP:
+            reasons.append(
+                f"Price is down {-trend_24h_bp / 100:.1f}% in 24h. Sharp drops (often a card returning to packs) "
+                "tend to keep falling for a while; waiting for the price to settle can give a better entry."
+            )
+        elif trend_24h_bp is not None and trend_24h_bp >= TREND_SPIKE_BP:
+            reasons.append(
+                f"Price is up {trend_24h_bp / 100:.1f}% in 24h. Buying straight after a spike risks buying the top."
+            )
 
         # SELL: price has reached the target selling level.
         if current_price >= expected_sell:

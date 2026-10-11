@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api, ApiError, newRequestId } from '../lib/api'
 import { coins, parseCoins, pct, pnlClass, signedCoins } from '../lib/format'
-import type { Settings, Transfer } from '../lib/types'
+import type { Flip, Settings, Transfer } from '../lib/types'
 import { Button, CoinInput, ErrorBox, Field, ModeBadge, Modal, Notice, useToast } from './ui'
 import { announceChange } from './Layout'
 
@@ -43,6 +43,7 @@ export function BuyDialog({ target, onClose, onDone }: { target: BuyTarget | nul
   const [notes, setNotes] = useState('')
   const [when, setWhen] = useState('')
   const [plan, setPlan] = useState<PurchasePlan | null>(null)
+  const [flip, setFlip] = useState<Flip | null>(null)
   const [step, setStep] = useState<'edit' | 'confirm'>('edit')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<ApiError | null>(null)
@@ -65,6 +66,18 @@ export function BuyDialog({ target, onClose, onDone }: { target: BuyTarget | nul
   const quantity = parseInt(qty, 10)
   const sellPrice = parseCoins(sell)
   const debounced = useDebounced(`${unit}|${quantity}`)
+  const debouncedFlip = useDebounced(`${unit}|${quantity}|${sellPrice}`)
+
+  useEffect(() => {
+    if (!target || !unit || !sellPrice || !quantity || quantity < 1 || quantity > 100) {
+      setFlip(null)
+      return
+    }
+    api<Flip>('/tools/flip', { method: 'POST', json: { buy_price: unit, sell_price: sellPrice, quantity } })
+      .then(setFlip)
+      .catch(() => setFlip(null))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedFlip, target])
 
   useEffect(() => {
     if (!target || !unit || !quantity || quantity < 1) {
@@ -155,6 +168,7 @@ export function BuyDialog({ target, onClose, onDone }: { target: BuyTarget | nul
             <Field label="Notes (optional)">{(id) => <input id={id} className="input" value={notes} maxLength={1000} onChange={(e) => setNotes(e.target.value)} />}</Field>
             {plan && !plan.ok && unit && <ErrorBox error={{ message: plan.message ?? 'Purchase not allowed.' }} />}
             {plan?.ok && <PlanSummary plan={plan} />}
+            {flip && <FlipSummary flip={flip} />}
           </>
         ) : (
           <>
@@ -163,6 +177,7 @@ export function BuyDialog({ target, onClose, onDone }: { target: BuyTarget | nul
               <ModeBadge mode={mode} />
             </div>
             {plan?.ok && <PlanSummary plan={plan} />}
+            {flip && <FlipSummary flip={flip} />}
             <Notice tone={mode === 'simulation' ? 'demo' : 'info'}>
               {mode === 'simulation'
                 ? 'This is a virtual trade with simulated coins. Nothing happens in FC 27.'
@@ -186,6 +201,21 @@ function PlanSummary({ plan }: { plan: PurchasePlan }) {
       <dt className="text-ink-muted">Invested coins</dt>
       <dd className="num text-right">{coins(plan.invested_before)} → <span className="text-ink">{coins(plan.invested_after)}</span></dd>
     </dl>
+  )
+}
+
+function FlipSummary({ flip }: { flip: Flip }) {
+  return (
+    <div className="rounded-lg border border-line bg-panel-2 p-3 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-ink-muted">If it sells at your target ({coins(flip.sell_price)})</span>
+        <span className={`num font-semibold ${pnlClass(flip.profit)}`}>{signedCoins(flip.profit)} <span className="text-xs">({pct(flip.roi_pct)})</span></span>
+      </div>
+      <p className="mt-1 text-xs text-ink-muted">
+        Break-even resale is <span className="num text-ink">{coins(flip.break_even_sell)}</span> per card: the price must rise {flip.required_rise_pct.toFixed(2)}% just to cover the tax.
+      </p>
+      {flip.profit < 0 && <p className="mt-1 text-xs text-loss">At this target you lose coins after tax.</p>}
+    </div>
   )
 }
 

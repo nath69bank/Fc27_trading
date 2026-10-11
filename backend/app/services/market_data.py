@@ -185,6 +185,7 @@ class PriceStats:
     points: int
     is_stale: bool
     age_hours: float | None
+    trend_24h_bp: int | None = None  # latest vs the last observation at least 24h older
 
     def to_dict(self) -> dict:
         return {
@@ -197,6 +198,7 @@ class PriceStats:
             "points": self.points,
             "is_stale": self.is_stale,
             "age_hours": self.age_hours,
+            "trend_24h_pct": self.trend_24h_bp / 100 if self.trend_24h_bp is not None else None,
             "is_simulated": self.latest_source in SIMULATED_SOURCES if self.latest_source else None,
         }
 
@@ -221,6 +223,12 @@ def price_stats(db: Session, card: Card, *, platform: str, stale_after_hours: in
     )
     history = [r.price for r in rows]
     enough = len(history) >= MIN_HISTORY_POINTS
+    trend = None
+    if latest is not None:
+        earlier = [r for r in rows if r.observed_at <= latest.observed_at - timedelta(hours=24)]
+        if earlier and earlier[-1].price > 0:
+            base = earlier[-1].price
+            trend = round((latest.price - base) * 10_000 / base)
     age = (now - latest.observed_at).total_seconds() / 3600 if latest else None
     return PriceStats(
         latest_price=latest.price if latest else None,
@@ -233,6 +241,7 @@ def price_stats(db: Session, card: Card, *, platform: str, stale_after_hours: in
         points=len(history),
         is_stale=age is None or age > stale_after_hours,
         age_hours=round(age, 2) if age is not None else None,
+        trend_24h_bp=trend,
     )
 
 

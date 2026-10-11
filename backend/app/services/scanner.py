@@ -51,6 +51,7 @@ def evaluate_item(db: Session, user: User, item: WatchlistItem, *, quantity: int
         quantity=quantity,
         existing_position_cost=position_cost(db, user, item.card_id),
         current_exposure=balance.invested_coins,
+        trend_24h_bp=stats.trend_24h_bp,
     )
     return opp, stats
 

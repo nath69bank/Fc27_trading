@@ -24,3 +24,9 @@ body {
 }
 .recharts-tooltip-wrapper { outline: none; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* Scroll containers hold absolutely positioned children (e.g. sr-only labels in table
+   cells); without a positioned ancestor those escape the scroll box and widen the page. */
+@layer base {
+  .overflow-x-auto, .overflow-auto { position: relative; }
+}

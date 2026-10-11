@@ -38,6 +38,8 @@ export interface Opportunity {
   reasons: string[]
   explanation: string
   disclaimer: string
+  break_even_sell: number | null
+  trend_24h_pct: number | null
   card: CardInfo | null
   watchlist_id: string | null
   target_buy: number | null
@@ -91,6 +93,7 @@ export interface PriceStats {
   points: number
   is_stale: boolean
   age_hours: number | null
+  trend_24h_pct: number | null
   is_simulated: boolean | null
 }
 
@@ -139,6 +142,7 @@ export interface Transfer {
   expected_tax: number
   expected_profit: number
   expected_roi_pct: number
+  break_even_sell: number
   current_price: number
   current_price_source: string
   current_value: number
@@ -283,4 +287,44 @@ export interface BalanceEvent {
 
 export interface MarketCard extends CardInfo {
   stats: PriceStats
+}
+
+export interface Flip {
+  buy_price: number
+  sell_price: number
+  quantity: number
+  cost: number
+  gross: number
+  tax: number
+  net: number
+  profit: number
+  profit_per_card: number
+  roi_pct: number
+  break_even_sell: number
+  required_rise_pct: number
+  target_profit: number
+  max_buy_for_target: number
+  sell_for_target: number
+}
+
+export interface FodderRow {
+  rating: number
+  name: string
+  card: CardInfo | null
+  stats: PriceStats | null
+  floor: number | null
+  break_even_sell?: number
+  required_rise_pct?: number
+  sell_at_uplift?: number
+  profit_per_card?: number
+  roi_pct?: number
+  budget_qty?: number
+  budget_profit?: number
+}
+
+export interface FodderBoard {
+  uplift_pct: number
+  budget: number | null
+  tax_rate_pct: number
+  ratings: FodderRow[]
 }

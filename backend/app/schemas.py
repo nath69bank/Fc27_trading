@@ -149,3 +149,16 @@ class SettingsUpdate(Body):
 class BalanceAdjustment(Body):
     amount: int = Field(ne=0, ge=-10**12, le=10**12)
     reason: str = Field(min_length=3, max_length=500)
+
+
+class FlipRequest(Body):
+    buy_price: Coins
+    sell_price: Coins
+    quantity: Qty = 1
+    target_profit: int = Field(default=0, ge=0, le=15_000_000)
+
+
+class FodderPrice(Body):
+    price: Coins
+    seen_on: SeenOn | None = None
+    observed_at: datetime | None = None

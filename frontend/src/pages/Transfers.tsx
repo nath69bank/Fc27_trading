@@ -90,6 +90,7 @@ function DetailDialog({ transfer, onClose }: { transfer: Transfer | null; onClos
     ['Target sell price', coins(t.target_sell_price)],
     ['Expected net proceeds', coins(t.expected_net_proceeds)],
     ['Expected tax', coins(t.expected_tax)],
+    ['Break-even resale', coins(t.break_even_sell)],
     ['Expected profit', <span className={pnlClass(t.expected_profit)}>{signedCoins(t.expected_profit)} ({pct(t.expected_roi_pct)})</span>],
     ['Current estimated price', <span className="inline-flex items-center gap-1">{coins(t.current_price)} <SourceBadge source={t.current_price_source} /></span>],
     ['Realised profit so far', <span className={pnlClass(t.realised_profit)}>{signedCoins(t.realised_profit)}</span>],
@@ -206,7 +207,7 @@ export default function Transfers() {
               <thead>
                 <tr className="border-b border-line">
                   <th className="th">Player</th><th className="th">Status</th><th className="th text-right">Buy price</th><th className="th text-right">Qty</th>
-                  <th className="th text-right">Invested</th><th className="th text-right">Target sell</th><th className="th text-right">Current est.</th>
+                  <th className="th text-right">Invested</th><th className="th text-right">Target sell</th><th className="th text-right" title="Lowest sale price that recovers the purchase price after tax">Break-even</th><th className="th text-right">Current est.</th>
                   <th className="th text-right">Exp. net</th><th className="th text-right">Exp. profit</th><th className="th text-right">Exp. ROI</th>
                   <th className="th">Purchased</th><th className="th">Held</th><th className="th text-right">Actions</th>
                 </tr>
@@ -222,6 +223,7 @@ export default function Transfers() {
                       <td className="td num text-right">{t.quantity_remaining}{t.quantity_sold > 0 && <span className="text-ink-faint">/{t.quantity_purchased}</span>}</td>
                       <td className="td num text-right">{coins(t.total_invested)}</td>
                       <td className="td num text-right">{coins(t.target_sell_price)}</td>
+                      <td className={cx('td num text-right', t.current_price < t.break_even_sell ? 'text-loss' : 'text-ink-muted')} title={t.current_price < t.break_even_sell ? 'Selling at the current estimate would lose coins after tax' : undefined}>{coins(t.break_even_sell)}</td>
                       <td className="td text-right"><div className="num">{coins(t.current_price)}</div><div className="mt-0.5 flex justify-end"><SourceBadge source={t.current_price_source} /></div></td>
                       <td className="td num text-right">{coins(t.expected_net_proceeds)}</td>
                       <td className={cx('td num text-right font-medium', pnlClass(t.expected_profit))}>{signedCoins(t.expected_profit)}</td>

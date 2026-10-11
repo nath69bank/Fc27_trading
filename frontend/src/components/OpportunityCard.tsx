@@ -40,6 +40,8 @@ export default function OpportunityCard({ opp, onBuy }: { opp: Opportunity; onBu
         <Row label="Expected net proceeds" value={coins(opp.expected_net_proceeds)} />
         <Row label="Est. profit after tax" value={signedCoins(opp.estimated_profit)} className={cx('font-semibold', pnlClass(opp.estimated_profit))} />
         <Row label="Estimated ROI" value={pct(opp.roi_pct)} className={pnlClass(opp.roi_pct)} />
+        <Row label="Break-even resale" value={coins(opp.break_even_sell)} />
+        <Row label="24h trend" value={pct(opp.trend_24h_pct, 1)} className={opp.trend_24h_pct == null ? '' : opp.trend_24h_pct <= -10 ? 'text-loss' : opp.trend_24h_pct >= 15 ? 'text-warn' : pnlClass(opp.trend_24h_pct)} />
         <Row label="Data freshness" value={opp.data_age_hours == null ? '—' : `${opp.data_age_hours < 1 ? '<1' : opp.data_age_hours.toFixed(1)}h old${opp.is_stale ? ' · stale' : ''}`} className={opp.is_stale ? 'text-warn' : ''} />
       </dl>
       <div className="mt-3 flex flex-wrap items-center gap-1.5">

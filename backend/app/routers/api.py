@@ -17,8 +17,8 @@ from ..deps import bearer_token, current_user, get_db
 from ..models import User
 from ..security import create_session, revoke_session, verify_password
 from ..seed import create_demo_account, prune_abandoned_guests
-from ..services import accounts, alerts, market_data, reports, scanner, trading, watchlist
-from ..services.common import ServiceError, get_settings_row
+from ..services import accounts, alerts, fodder, market_data, reports, scanner, trading, watchlist
+from ..services.common import ServiceError, engine_for, get_settings_row
 
 router = APIRouter(prefix="/api")
 Auth = Depends(current_user)
@@ -233,6 +233,31 @@ def simulate(user: User = Auth, db: Session = DB) -> dict:
 def refresh_live(user: User = Auth, db: Session = DB) -> dict:
     result = market_data.refresh_live(db, user)
     trading.refresh_statuses(db, user)
+    alerts.refresh_alerts(db, user)
+    return result
+
+
+# --------------------------------------------------------------------------- tools & fodder
+
+
+@router.post("/tools/flip")
+def flip_calculator(body: schemas.FlipRequest, user: User = Auth, db: Session = DB) -> dict:
+    """After-tax maths for any buy/sell pair, using the user's tax rate."""
+    engine = engine_for(get_settings_row(db, user), with_limits=False)
+    return engine.flip(body.buy_price, body.sell_price, body.quantity, body.target_profit)
+
+
+@router.get("/fodder")
+def get_fodder(
+    uplift_pct: float = Query(10.0, ge=0, le=500), budget: int | None = Query(None, gt=0, le=10**10),
+    user: User = Auth, db: Session = DB,
+) -> dict:
+    return fodder.fodder_board(db, user, uplift_pct=uplift_pct, budget=budget)
+
+
+@router.post("/fodder/{rating}/price", status_code=201)
+def post_fodder_price(rating: int, body: schemas.FodderPrice, user: User = Auth, db: Session = DB) -> dict:
+    result = fodder.record_floor(db, user, rating, body.price, seen_on=body.seen_on, observed_at=body.observed_at)
     alerts.refresh_alerts(db, user)
     return result
 

@@ -241,3 +241,40 @@ def test_performance_report_mixed(engine):
     assert r.average_holding_hours == 20
     assert r.unrealised_profit == 2_000  # never folded into realised figures
     assert r.total_portfolio_value == 122_000
+
+
+# ---------------------------------------------------------------- break-even & flips (community examples)
+
+
+@pytest.mark.parametrize("buy", [750, 2_200, 4_300, 6_000, 7_700, 9_200, 17_500, 25_200, 1_000_000])
+def test_break_even_is_the_lowest_price_that_recovers_cost(engine, buy):
+    be = engine.break_even_price(buy)
+    assert engine.net_after_tax(be) >= buy
+    assert engine.net_after_tax(be - 1) < buy
+
+
+def test_snipe_below_market_can_still_lose_after_tax(engine):
+    # Snipe at 7,700, relist at the 8,000 market: tax makes it a loss.
+    f = engine.flip(7_700, 8_000)
+    assert (f["net"], f["profit"]) == (7_600, -100)
+    # To clear 500 profit at an 8,000 resale you must pay no more than 7,100.
+    assert engine.flip(7_700, 8_000, target_profit=500)["max_buy_for_target"] == 7_100
+
+
+def test_rated_fodder_needs_a_real_spike(engine):
+    f = engine.flip(9_200, 10_000, quantity=3, target_profit=1_000)
+    assert f["break_even_sell"] == 9_684 and f["required_rise_pct"] == 5.26
+    assert f["profit"] == 900 and f["sell_for_target"] == 10_737
+
+
+def test_cheap_spec_gain_mostly_eaten_by_tax(engine):
+    f = engine.flip(750, 850, quantity=5)
+    assert f["profit_per_card"] == 57 and f["break_even_sell"] == 789
+
+
+def test_trend_warnings_inform_without_changing_signal(engine):
+    falling = engine.evaluate_opportunity("X", 25_200, 25_000, 32_000, observed_at=NOW, now=NOW, trend_24h_bp=-5_000)
+    assert falling.signal == "BUY" and any("down 50.0% in 24h" in r for r in falling.reasons)
+    spiking = engine.evaluate_opportunity("X", 25_200, 25_000, 32_000, observed_at=NOW, now=NOW, trend_24h_bp=2_000)
+    assert any("up 20.0% in 24h" in r for r in spiking.reasons)
+    assert falling.break_even_sell == 26_526 and falling.to_dict()["trend_24h_pct"] == -50.0

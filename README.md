@@ -19,6 +19,8 @@ and measures trading performance.
 | **Market Scanner** | `evaluate_opportunity()` on your watchlist or on prices you type in. Returns BUY / HOLD / SELL / WATCH / RISK with the reasoning behind it |
 | **Card Gallery** | Every tracked card as a tile with latest price, 30-day range and signal. Save each player's FUTBIN and FUT.GG pages for one-click access, and record prices with where you saw them |
 | **Watchlist** | `add_to_watchlist()`, edit, remove, search, sort, favourites, per-player detail page, evaluate on demand |
+| **Fodder Tracker** | Floors for the cheapest gold at ratings 82–91 (the cards SBCs consume). Shows what selling into an X% spike pays per card and on your budget, after tax, with buy and watch actions |
+| **Trading Playbook** | Seven lessons (tax hurdle, sniping maths, SBC fodder, supply shocks, cheap spec near the price floor, platform and freshness, risk rules) with worked examples computed live, plus a flip calculator |
 | **Active Transfers** | `execute_purchase()` with review → confirm. Update estimates and targets, mark as listed, record (partial) sales, cancel, view details |
 | **Trade History** | `track_and_settle()` ledger: tax, net proceeds, realised profit, ROI. Search, sort, paginate, CSV export |
 | **Performance Analytics** | `generate_performance_report()`: win rate, best and worst trades, average holding time. Charts for cumulative profit, daily/weekly profit, profit by player, ROI distribution, wins vs losses and account value |
@@ -178,7 +180,7 @@ The expected sell price follows your **default selling strategy**: your target s
 ## Tests
 
 ```bash
-cd backend && pytest                       # 66 tests, SQLite
+cd backend && pytest                       # 82 tests, SQLite
 TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost/fc27_test pytest   # same suite on PostgreSQL
 ```
 

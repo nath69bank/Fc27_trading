@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
-  Bell, BookOpen, CandlestickChart, ClipboardList, Gauge, LayoutGrid, LineChart, Menu, RotateCcw, Radar, Settings as SettingsIcon, Star, X,
+  Bell, BookOpen, CandlestickChart, ClipboardList, Gauge, GraduationCap, Layers, LayoutGrid, LineChart, Menu, RotateCcw, Radar, Settings as SettingsIcon, Star, X,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -24,10 +24,12 @@ const NAV = [
   { to: '/scanner', label: 'Market Scanner', icon: Radar },
   { to: '/watchlist', label: 'Watchlist', icon: Star },
   { to: '/gallery', label: 'Card Gallery', icon: LayoutGrid },
+  { to: '/fodder', label: 'Fodder Tracker', icon: Layers },
   { to: '/transfers', label: 'Active Transfers', icon: ClipboardList },
   { to: '/history', label: 'Trade History', icon: BookOpen },
   { to: '/performance', label: 'Performance Analytics', icon: LineChart },
   { to: '/prices', label: 'Price History', icon: CandlestickChart },
+  { to: '/playbook', label: 'Trading Playbook', icon: GraduationCap },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
 ]
 

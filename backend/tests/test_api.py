@@ -533,3 +533,37 @@ def test_price_seen_on_is_recorded(client, user):
     assert client.post("/api/market/prices", headers=user, json={"card_id": item["card"]["id"], "price": 1, "seen_on": "ebay"}).status_code == 422
     w = client.get(f"/api/watchlist/{item['id']}", headers=user).json()
     assert w["latest_seen_on"] == "futbin" and w["price_stats"]["latest_seen_on"] == "futbin"
+
+
+def test_flip_calculator_endpoint(client, user):
+    r = client.post("/api/tools/flip", headers=user, json={"buy_price": 7_700, "sell_price": 8_000, "target_profit": 500})
+    assert r.status_code == 200 and r.json()["profit"] == -100 and r.json()["max_buy_for_target"] == 7_100
+    assert client.post("/api/tools/flip", headers=user, json={"buy_price": 0, "sell_price": 8_000}).status_code == 422
+    client.put("/api/settings", headers=user, json={"tax_rate_pct": 10})
+    assert client.post("/api/tools/flip", headers=user, json={"buy_price": 9_000, "sell_price": 10_000}).json()["net"] == 9_000
+
+
+def test_fodder_board_and_floor_prices(client, user):
+    board = client.get("/api/fodder", headers=user).json()
+    assert [r["rating"] for r in board["ratings"]] == list(range(82, 92))
+    assert all(r["floor"] is None for r in board["ratings"])
+    for rating, price in ((85, 2_200), (88, 9_200), (89, 17_500)):
+        assert client.post(f"/api/fodder/{rating}/price", headers=user, json={"price": price, "seen_on": "futbin"}).status_code == 201
+    board = client.get("/api/fodder?uplift_pct=20&budget=100000", headers=user).json()
+    r88 = next(r for r in board["ratings"] if r["rating"] == 88)
+    assert r88["floor"] == 9_200 and r88["break_even_sell"] == 9_684 and r88["sell_at_uplift"] == 11_040
+    assert r88["profit_per_card"] == 11_040 - 552 - 9_200 and r88["budget_qty"] == 10
+    assert r88["stats"]["latest_seen_on"] == "futbin" and r88["card"]["rating"] == 88
+    assert client.post("/api/fodder/95/price", headers=user, json={"price": 1000}).status_code == 422
+    # each rating is an ordinary card: it shows up in the gallery and can be watched / traded
+    assert any(c["player_name"] == "Cheapest 88-rated gold" for c in client.get("/api/market/cards", headers=user).json())
+    other = signup(client)
+    assert all(r["floor"] is None for r in client.get("/api/fodder", headers=other).json()["ratings"])
+
+
+def test_opportunity_reports_break_even_and_trend(client, demo_user):
+    item = client.get("/api/watchlist", headers=demo_user).json()
+    mg = next(w for w in item if w["card"]["player_name"] == "Meta Gold Winger")
+    opp = client.post(f"/api/watchlist/{mg['id']}/evaluate", headers=demo_user).json()
+    assert opp["signal"] == "BUY" and opp["break_even_sell"] == 26_526
+    assert opp["trend_24h_pct"] is not None  # sample history spans 14 days
